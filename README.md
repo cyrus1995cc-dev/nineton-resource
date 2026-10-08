@@ -22,6 +22,16 @@ npm run dev
 
 首次登录使用 `admin / admin123`。部署前请设置 `ASSET_ADMIN_PASSWORD`（也可以设置 `ASSET_ADMIN_USERNAME`）再启动服务。管理员可在“系统设置”创建管理员、资产管理员和只读用户；未登录请求不会读取资产数据。
 
+钉钉 H5 免登需要配置以下环境变量后重启后端：
+
+```powershell
+$env:DINGTALK_CLIENT_ID="你的AppKey"
+$env:DINGTALK_CLIENT_SECRET="你的AppSecret"
+$env:DINGTALK_CORP_ID="你的CorpId"
+```
+
+钉钉登录默认调用 `https://api.dingtalk.com/v1.0/oauth2/userAccessToken` 和 `https://api.dingtalk.com/v1.0/contact/userinfo`，如企业使用不同版本，可通过 `DINGTALK_TOKEN_URL`、`DINGTALK_USER_URL` 覆盖。首次通过钉钉登录的账号会自动创建为只读用户。
+
 ## 测试和构建
 
 ```powershell

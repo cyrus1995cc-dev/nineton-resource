@@ -84,6 +84,7 @@ export function migrate(db: DatabaseSync) {
       password_hash TEXT NOT NULL,
       display_name TEXT NOT NULL,
       role TEXT NOT NULL DEFAULT 'viewer' CHECK (role IN ('admin', 'asset_manager', 'viewer')),
+      dingtalk_user_id TEXT UNIQUE,
       active INTEGER NOT NULL DEFAULT 1,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -98,4 +99,6 @@ export function migrate(db: DatabaseSync) {
     );
     CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token_hash);
   `);
+  try { db.exec('ALTER TABLE users ADD COLUMN dingtalk_user_id TEXT'); } catch { /* existing databases already have this column */ }
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_dingtalk ON users(dingtalk_user_id) WHERE dingtalk_user_id IS NOT NULL');
 }

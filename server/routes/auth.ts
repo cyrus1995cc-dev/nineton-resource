@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import type { DatabaseSync } from 'node:sqlite';
-import { authenticate, authTokenFromRequest, createUser, listUsers, resolveSession, revokeSession } from '../auth';
+import { authenticate, authenticateDingTalk, authTokenFromRequest, createUser, getDingTalkConfig, listUsers, resolveSession, revokeSession } from '../auth';
 import { requireAuth, requireRole } from '../middleware/auth';
 
 export function createAuthRouter(db: DatabaseSync) {
@@ -9,6 +9,18 @@ export function createAuthRouter(db: DatabaseSync) {
     const result = authenticate(db, String(req.body?.username ?? '').trim(), String(req.body?.password ?? ''));
     if (!result) return res.status(401).json({ message: '用户名或密码错误' });
     return res.json(result);
+  });
+  router.get('/dingtalk/config', (_req, res) => res.json(getDingTalkConfig()));
+  router.post('/dingtalk/login', async (req, res) => {
+    try {
+      const result = await authenticateDingTalk(db, String(req.body?.code ?? ''));
+      if (result.status === 'disabled') return res.status(503).json({ message: '钉钉登录尚未配置' });
+      if (result.status === 'invalid_code') return res.status(400).json({ message: '缺少钉钉授权码' });
+      if (result.status === 'disabled_user') return res.status(403).json({ message: '钉钉账号已停用' });
+      return res.json(result);
+    } catch (error) {
+      return res.status(502).json({ message: error instanceof Error ? error.message : '钉钉登录失败' });
+    }
   });
   router.get('/me', (req, res) => {
     const user = resolveSession(db, authTokenFromRequest(req.header('authorization')));

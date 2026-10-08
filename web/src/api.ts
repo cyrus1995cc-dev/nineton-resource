@@ -16,6 +16,12 @@ export const api = {
     localStorage.setItem('asset_token', result.token);
     return result.user;
   },
+  dingtalkConfig: () => request<{ enabled: boolean; corpId: string }>('/api/auth/dingtalk/config'),
+  loginDingTalk: async (code: string) => {
+    const result = await request<{ token: string; user: AuthUser }>('/api/auth/dingtalk/login', { method: 'POST', body: JSON.stringify({ code }) });
+    localStorage.setItem('asset_token', result.token);
+    return result.user;
+  },
   me: async () => (await request<{ user: AuthUser }>('/api/auth/me')).user,
   listUsers: () => request<{ users: ManagedUser[] }>('/api/auth/users'),
   createUser: (input: { username: string; password: string; display_name: string; role: ManagedUser['role'] }) => request<{ user: ManagedUser }>('/api/auth/users', {

@@ -3,6 +3,7 @@ import type { DatabaseSync } from 'node:sqlite';
 
 export type UserRole = 'admin' | 'asset_manager' | 'viewer';
 export type AuthUser = { id: number; username: string; display_name: string; role: UserRole };
+export type DingTalkConfig = { enabled: boolean; corpId: string };
 
 function passwordHash(password: string, salt = randomBytes(16).toString('hex')) {
   return `scrypt$${salt}$${scryptSync(password, salt, 64).toString('hex')}`;
@@ -20,6 +21,13 @@ function verifyPassword(password: string, stored: string) {
 
 function hashToken(token: string) {
   return createHash('sha256').update(token).digest('hex');
+}
+
+function sessionForRow(db: DatabaseSync, row: Record<string, unknown>) {
+  const token = randomBytes(32).toString('base64url');
+  const expiresAt = Date.now() + 8 * 60 * 60 * 1000;
+  db.prepare('INSERT INTO sessions (user_id, token_hash, expires_at) VALUES (?, ?, ?)').run(row.id as number, hashToken(token), expiresAt);
+  return { token, user: publicUser(row), expiresAt };
 }
 
 export function ensureDefaultAdmin(db: DatabaseSync) {
@@ -58,10 +66,48 @@ export function createUser(db: DatabaseSync, input: UserInput) {
 export function authenticate(db: DatabaseSync, username: string, password: string) {
   const row = db.prepare('SELECT * FROM users WHERE username = ? AND active = 1').get(username) as Record<string, unknown> | undefined;
   if (!row || !verifyPassword(password, String(row.password_hash))) return null;
-  const token = randomBytes(32).toString('base64url');
-  const expiresAt = Date.now() + 8 * 60 * 60 * 1000;
-  db.prepare('INSERT INTO sessions (user_id, token_hash, expires_at) VALUES (?, ?, ?)').run(row.id as number, hashToken(token), expiresAt);
-  return { token, user: publicUser(row), expiresAt };
+  return sessionForRow(db, row);
+}
+
+export function getDingTalkConfig(): DingTalkConfig {
+  const corpId = process.env.DINGTALK_CORP_ID ?? '';
+  return { enabled: Boolean(process.env.DINGTALK_CLIENT_ID && process.env.DINGTALK_CLIENT_SECRET && corpId), corpId };
+}
+
+async function readJson(response: Response) {
+  const payload = await response.json().catch(() => ({})) as Record<string, unknown>;
+  if (!response.ok) throw new Error(String(payload.message ?? payload.errmsg ?? `钉钉接口失败（${response.status}）`));
+  return payload;
+}
+
+export async function authenticateDingTalk(db: DatabaseSync, code: string) {
+  const config = getDingTalkConfig();
+  if (!config.enabled) return { status: 'disabled' as const };
+  if (!code.trim()) return { status: 'invalid_code' as const };
+  const tokenResponse = await readJson(await fetch(process.env.DINGTALK_TOKEN_URL ?? 'https://api.dingtalk.com/v1.0/oauth2/userAccessToken', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ clientId: process.env.DINGTALK_CLIENT_ID, clientSecret: process.env.DINGTALK_CLIENT_SECRET, code, grantType: 'authorization_code' }),
+  }));
+  const accessToken = String(tokenResponse.accessToken ?? tokenResponse.access_token ?? '');
+  if (!accessToken) throw new Error('钉钉未返回用户访问令牌');
+  const profile = await readJson(await fetch(process.env.DINGTALK_USER_URL ?? 'https://api.dingtalk.com/v1.0/contact/userinfo', {
+    headers: { 'x-acs-dingtalk-access-token': accessToken },
+  }));
+  const dingTalkUserId = String(profile.unionId ?? profile.unionid ?? profile.openId ?? profile.openid ?? '');
+  if (!dingTalkUserId) throw new Error('钉钉未返回稳定用户标识');
+  const displayName = String(profile.nick ?? profile.name ?? dingTalkUserId);
+  let row = db.prepare('SELECT * FROM users WHERE dingtalk_user_id = ?').get(dingTalkUserId) as Record<string, unknown> | undefined;
+  if (!row) {
+    const username = `ding_${createHash('sha256').update(dingTalkUserId).digest('hex').slice(0, 20)}`;
+    db.prepare(`INSERT INTO users (username, password_hash, display_name, role, dingtalk_user_id)
+      VALUES (?, ?, ?, 'viewer', ?)`).run(username, passwordHash(randomUUID()), displayName, dingTalkUserId);
+    row = db.prepare('SELECT * FROM users WHERE dingtalk_user_id = ?').get(dingTalkUserId) as Record<string, unknown>;
+  } else if (String(row.display_name) !== displayName) {
+    db.prepare('UPDATE users SET display_name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(displayName, row.id as number);
+    row = db.prepare('SELECT * FROM users WHERE id = ?').get(row.id as number) as Record<string, unknown>;
+  }
+  if (!row || Number(row.active) !== 1) return { status: 'disabled_user' as const };
+  return { status: 'authenticated' as const, ...sessionForRow(db, row) };
 }
 
 export function resolveSession(db: DatabaseSync, token: string | undefined) {
