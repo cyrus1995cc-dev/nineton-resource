@@ -98,6 +98,40 @@ export function migrate(db: DatabaseSync) {
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
     CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token_hash);
+    CREATE TABLE IF NOT EXISTS inventory_tasks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      location_filter TEXT,
+      department_filter TEXT,
+      status TEXT NOT NULL DEFAULT 'in_progress' CHECK (status IN ('in_progress', 'completed')),
+      operator_name TEXT,
+      total_count INTEGER NOT NULL DEFAULT 0,
+      checked_count INTEGER NOT NULL DEFAULT 0,
+      difference_count INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      completed_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_inventory_tasks_status ON inventory_tasks(status, created_at DESC);
+    CREATE TABLE IF NOT EXISTS inventory_records (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      task_id INTEGER NOT NULL,
+      asset_id INTEGER NOT NULL,
+      asset_code TEXT NOT NULL,
+      asset_name TEXT,
+      expected_status TEXT,
+      expected_location TEXT,
+      expected_assignee TEXT,
+      expected_department TEXT,
+      result TEXT NOT NULL DEFAULT 'pending' CHECK (result IN ('pending', 'found', 'different', 'missing')),
+      actual_location TEXT,
+      note TEXT,
+      operator_name TEXT,
+      checked_at TEXT,
+      UNIQUE(task_id, asset_id),
+      FOREIGN KEY (task_id) REFERENCES inventory_tasks(id) ON DELETE CASCADE,
+      FOREIGN KEY (asset_id) REFERENCES assets(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_inventory_records_task ON inventory_records(task_id, result);
   `);
   try { db.exec('ALTER TABLE users ADD COLUMN dingtalk_user_id TEXT'); } catch { /* existing databases already have this column */ }
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_dingtalk ON users(dingtalk_user_id) WHERE dingtalk_user_id IS NOT NULL');

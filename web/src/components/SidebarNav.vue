@@ -6,6 +6,7 @@ const items = [
   { key: 'assets', icon: '▦', label: '资产清单' },
   { key: 'scan', icon: '⌕', label: '扫码查询' },
   { key: 'events', icon: '↔', label: '资产流转' },
+  { key: 'inventory', icon: '✓', label: '资产盘点' },
   { key: 'settings', icon: '⚙', label: '系统设置' },
 ];
 </script>

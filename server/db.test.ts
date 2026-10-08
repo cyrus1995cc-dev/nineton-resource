@@ -10,6 +10,8 @@ describe('asset database', () => {
       'assets',
       'employees',
       'import_batches',
+      'inventory_records',
+      'inventory_tasks',
       'sessions',
       'users',
     ]);

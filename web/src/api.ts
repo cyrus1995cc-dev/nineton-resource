@@ -1,4 +1,4 @@
-import type { Asset, AssetListResponse, AssetUpdateInput, AuthUser, ImportResponse, ManagedUser, Stats } from './types';
+import type { Asset, AssetListResponse, AssetUpdateInput, AuthUser, ImportResponse, InventoryTask, InventoryTaskDetail, ManagedUser, Stats } from './types';
 
 const authToken = () => typeof localStorage === 'undefined' ? '' : localStorage.getItem('asset_token') ?? '';
 
@@ -54,5 +54,16 @@ export const api = {
   },
   confirmImport: (input: Pick<ImportResponse, 'batchId' | 'fileName' | 'rows'>) => request<{ totalRows: number; newRows: number; updatedRows: number; unchangedRows: number; invalidRows: number }>('/api/imports/confirm', {
     method: 'POST', body: JSON.stringify(input),
+  }),
+  listInventoryTasks: () => request<{ tasks: InventoryTask[] }>('/api/inventory/tasks'),
+  getInventoryTask: (taskId: number) => request<InventoryTaskDetail>(`/api/inventory/tasks/${taskId}`),
+  createInventoryTask: (input: { name: string; location?: string; department?: string; operatorName?: string }) => request<InventoryTaskDetail>('/api/inventory/tasks', {
+    method: 'POST', body: JSON.stringify(input),
+  }),
+  recordInventoryScan: (taskId: number, input: { assetCode: string; actualLocation?: string; note?: string; operatorName?: string }) => request<InventoryTaskDetail & { record: InventoryTaskDetail['records'][number] }>(`/api/inventory/tasks/${taskId}/records`, {
+    method: 'POST', body: JSON.stringify(input),
+  }),
+  completeInventoryTask: (taskId: number, operatorName?: string) => request<InventoryTaskDetail>(`/api/inventory/tasks/${taskId}/complete`, {
+    method: 'POST', body: JSON.stringify({ operatorName }),
   }),
 };

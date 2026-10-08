@@ -10,6 +10,7 @@ import AssetEventPanel from './components/AssetEventPanel.vue';
 import QrLookup from './components/QrLookup.vue';
 import LoginView from './components/LoginView.vue';
 import UserSettingsPanel from './components/UserSettingsPanel.vue';
+import InventoryPanel from './components/InventoryPanel.vue';
 
 const activeView = ref('dashboard');
 const stats = ref<Stats>({ total: 0, status: {}, categories: [], locations: [], companies: [], amounts: { taxed: 0, untaxed: 0, tax: 0 } });
@@ -39,7 +40,7 @@ const inUse = computed(() => stats.value.status['在用'] ?? 0);
 const idle = computed(() => stats.value.status['空闲'] ?? 0);
 const canWrite = computed(() => currentUser.value?.role === 'admin' || currentUser.value?.role === 'asset_manager');
 const canManageUsers = computed(() => currentUser.value?.role === 'admin');
-const activeTitle = computed(() => ({ dashboard: '经营分析看板', assets: '资产清单', scan: '扫码查询', events: '资产流转', settings: '系统设置' }[activeView.value] ?? '资产管理系统'));
+const activeTitle = computed(() => ({ dashboard: '经营分析看板', assets: '资产清单', scan: '扫码查询', events: '资产流转', inventory: '资产盘点', settings: '系统设置' }[activeView.value] ?? '资产管理系统'));
 
 async function loadStats() { stats.value = await api.getStats(); }
 async function loadAssets() {
@@ -69,6 +70,7 @@ async function createUser(payload: { username: string; password: string; display
   catch (err) { error.value = err instanceof Error ? err.message : '用户创建失败'; }
   finally { userBusy.value = false; }
 }
+function showToast(message: string) { toast.value = message; globalThis.setTimeout(() => { toast.value = ''; }, 2400); }
 async function selectAsset(asset: Asset) { try { selected.value = await api.getAsset(asset.asset_code); } catch (err) { error.value = err instanceof Error ? err.message : '资产详情加载失败'; } }
 async function lookupAsset(payload: { raw: string; assetCode: string }) {
   try {
@@ -152,6 +154,7 @@ onMounted(bootstrapAuth);
       <section v-else-if="activeView === 'events'" class="content-area"><div class="flow-grid"><div class="panel list-panel"><div class="filter-row"><div class="search-box"><span>⌕</span><input v-model="search" placeholder="搜索要操作的资产" @keyup.enter="applyFilters" /><button @click="applyFilters">搜索</button></div><select v-model="statusFilter" @change="applyFilters"><option value="">全部状态</option><option value="在用">在用</option><option value="空闲">空闲</option><option value="借出">借出</option><option value="维修">维修</option></select><button class="secondary-button" @click="refresh">刷新</button></div><div class="list-summary"><span>可操作资产</span><strong>{{ total }}</strong><span>项</span></div><AssetTable :items="assets" :total="total" :page="page" :page-size="pageSize" :loading="loading" @select="selectFlowAsset" @page="(next) => { page = next; loadAssets(); }" /></div><AssetEventPanel :asset="flowAsset" :busy="eventBusy" :can-write="canWrite" @submit="submitFlowEvent" /></div></section>
 
       <section v-else-if="activeView === 'scan'" class="content-area scan-view"><QrLookup @lookup="lookupAsset" /></section>
+      <section v-else-if="activeView === 'inventory'" class="content-area"><InventoryPanel :locations="stats.locations" :can-write="canWrite" @error="(message) => { error = message; }" @success="showToast" /></section>
       <section v-else-if="activeView === 'settings'" class="content-area"><UserSettingsPanel :users="users" :can-write="canManageUsers" :busy="userBusy" @create="createUser" /></section>
       <section v-else class="content-area"><div class="panel placeholder-panel"><span class="eyebrow">{{ activeTitle }}</span><h2>这个模块将在下一阶段接入</h2><p>一期核心功能已经包含资产台账、二维码解析、Excel 导入、看板统计和流转记录。</p></div></section>
     </main>

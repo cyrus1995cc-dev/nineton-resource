@@ -8,6 +8,7 @@ import { createImportRouter } from './routes/imports';
 import { createAssetRouter } from './routes/assets';
 import { createEventRouter } from './routes/events';
 import { createStatsRouter } from './routes/stats';
+import { createInventoryRouter } from './routes/inventory';
 import { createAuthRouter } from './routes/auth';
 import { ensureDefaultAdmin } from './auth';
 import { requireAuth, requireRole } from './middleware/auth';
@@ -30,6 +31,7 @@ export function createApp(options: { db?: DatabaseSync; auth?: boolean } = {}) {
   app.use('/api/assets', createAssetRouter(db));
   app.use('/api/assets', createEventRouter(db));
   app.use('/api/stats', createStatsRouter(db));
+  app.use('/api/inventory', createInventoryRouter(db));
 
   const distPath = join(process.cwd(), 'dist');
   if (existsSync(distPath)) app.use(express.static(distPath));

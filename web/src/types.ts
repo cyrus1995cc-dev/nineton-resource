@@ -75,3 +75,36 @@ export type ImportResponse = {
   rows: Record<string, unknown>[];
   preview: ImportPreview;
 };
+
+export type InventoryTask = {
+  id: number;
+  name: string;
+  location_filter: string;
+  department_filter: string;
+  status: 'in_progress' | 'completed';
+  operator_name: string;
+  total_count: number;
+  checked_count: number;
+  difference_count: number;
+  created_at: string;
+  completed_at: string;
+};
+
+export type InventoryRecord = {
+  id: number;
+  task_id: number;
+  asset_id: number;
+  asset_code: string;
+  asset_name: string;
+  expected_status: string;
+  expected_location: string;
+  expected_assignee: string;
+  expected_department: string;
+  result: 'pending' | 'found' | 'different' | 'missing';
+  actual_location: string;
+  note: string;
+  operator_name: string;
+  checked_at: string;
+};
+
+export type InventoryTaskDetail = { task: InventoryTask; records: InventoryRecord[] };
