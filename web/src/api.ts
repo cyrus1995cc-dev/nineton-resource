@@ -1,10 +1,11 @@
 import type { Asset, AssetListResponse, AssetUpdateInput, AuthUser, ImportResponse, InventoryTask, InventoryTaskDetail, ManagedUser, Stats } from './types';
 
 const authToken = () => typeof localStorage === 'undefined' ? '' : localStorage.getItem('asset_token') ?? '';
+const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const token = authToken();
-  const response = await fetch(path, { headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(init?.headers ?? {}) }, ...init });
+  const response = await fetch(`${apiBaseUrl}${path}`, { headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(init?.headers ?? {}) }, ...init });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(payload.message ?? `请求失败（${response.status}）`);
   return payload as T;
@@ -47,7 +48,7 @@ export const api = {
   previewImport: async (file: File) => {
     const body = new FormData();
     body.append('file', file);
-    const response = await fetch('/api/imports/preview', { method: 'POST', body });
+    const response = await fetch(`${apiBaseUrl}/api/imports/preview`, { method: 'POST', body });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.message ?? '导入预览失败');
     return payload as ImportResponse;

@@ -22,6 +22,20 @@ npm run dev
 
 首次登录使用 `admin / admin123`。部署前请设置 `ASSET_ADMIN_PASSWORD`（也可以设置 `ASSET_ADMIN_USERNAME`）再启动服务。管理员可在“系统设置”创建管理员、资产管理员和只读用户；未登录请求不会读取资产数据。
 
+## Android APK
+
+安卓 APK 使用构建时的 `VITE_API_BASE_URL` 连接电脑上的 API。手机和电脑需要在同一局域网，先让后端监听 `0.0.0.0`，再把电脑局域网 IP 写入构建参数：
+
+```powershell
+$env:VITE_API_BASE_URL="http://192.168.1.100:3000"
+npm run android:sync
+Push-Location android
+gradle assembleDebug
+Pop-Location
+```
+
+生成文件：`android/app/build/outputs/apk/debug/app-debug.apk`。如果只是浏览器本地开发，不设置该变量即可，Vite 会继续代理 `/api` 到 `localhost:3000`。
+
 钉钉 H5 免登需要配置以下环境变量后重启后端：
 
 ```powershell
