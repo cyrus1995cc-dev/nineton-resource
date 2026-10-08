@@ -1,0 +1,4 @@
+:root { font-family: Inter, "Microsoft YaHei", sans-serif; color: #1f2937; background: #f3f6fa; }
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; }
+.placeholder-app { padding: 48px; }
