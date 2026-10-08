@@ -20,6 +20,8 @@ npm run dev
 
 浏览器打开 `http://localhost:5173`。开发 API 运行在 `http://localhost:3000`，Vite 会代理 `/api` 请求。
 
+首次登录使用 `admin / admin123`。部署前请设置 `ASSET_ADMIN_PASSWORD`（也可以设置 `ASSET_ADMIN_USERNAME`）再启动服务。管理员可在“系统设置”创建管理员、资产管理员和只读用户；未登录请求不会读取资产数据。
+
 ## 测试和构建
 
 ```powershell
