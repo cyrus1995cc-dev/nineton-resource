@@ -35,10 +35,13 @@ async function loginWithDingTalk() {
     const result = await new Promise<{ code?: string; errCode?: number; errMsg?: string }>((resolve, reject) => {
       let settled = false;
       const done = (value: { code?: string; errCode?: number; errMsg?: string }) => { if (settled) return; settled = true; resolve(value); };
-      try {
-        const returned = requestAuthCode({ corpId: dingtalkCorpId.value }, done);
-        if (returned && typeof (returned as Promise<unknown>).then === 'function') (returned as Promise<{ code?: string; errCode?: number; errMsg?: string }>).then(done).catch(reject);
-      } catch (err) { reject(err); }
+      const invoke = () => {
+        try {
+          const returned = requestAuthCode({ corpId: dingtalkCorpId.value }, done);
+          if (returned && typeof (returned as Promise<unknown>).then === 'function') (returned as Promise<{ code?: string; errCode?: number; errMsg?: string }>).then(done).catch(reject);
+        } catch (err) { reject(err); }
+      };
+      try { (dd.ready ?? ((callback: () => void) => callback()))(invoke); } catch (err) { reject(err); }
     });
     if (!result.code) throw new Error(result.errMsg || '未取得钉钉授权码');
     emit('loggedIn', await api.loginDingTalk(result.code));
