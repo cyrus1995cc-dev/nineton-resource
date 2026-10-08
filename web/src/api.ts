@@ -1,13 +1,27 @@
-import type { Asset, AssetListResponse, AssetUpdateInput, ImportResponse, Stats } from './types';
+import type { Asset, AssetListResponse, AssetUpdateInput, AuthUser, ImportResponse, ManagedUser, Stats } from './types';
+
+const authToken = () => typeof localStorage === 'undefined' ? '' : localStorage.getItem('asset_token') ?? '';
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, { headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) }, ...init });
+  const token = authToken();
+  const response = await fetch(path, { headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(init?.headers ?? {}) }, ...init });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(payload.message ?? `请求失败（${response.status}）`);
   return payload as T;
 }
 
 export const api = {
+  login: async (username: string, password: string) => {
+    const result = await request<{ token: string; user: AuthUser }>('/api/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) });
+    localStorage.setItem('asset_token', result.token);
+    return result.user;
+  },
+  me: async () => (await request<{ user: AuthUser }>('/api/auth/me')).user,
+  listUsers: () => request<{ users: ManagedUser[] }>('/api/auth/users'),
+  createUser: (input: { username: string; password: string; display_name: string; role: ManagedUser['role'] }) => request<{ user: ManagedUser }>('/api/auth/users', {
+    method: 'POST', body: JSON.stringify(input),
+  }),
+  logout: async () => { await request<void>('/api/auth/logout', { method: 'POST' }).catch(() => undefined); localStorage.removeItem('asset_token'); },
   getStats: () => request<Stats>('/api/stats'),
   listAssets: (params: { search?: string; status?: string; category?: string; location?: string; page?: number; pageSize?: number }) => {
     const query = new URLSearchParams();

@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { api } from './api';
-import type { Asset, ImportResponse, Stats } from './types';
+import type { Asset, AuthUser, ImportResponse, ManagedUser, Stats } from './types';
 import SidebarNav from './components/SidebarNav.vue';
 import MetricCard from './components/MetricCard.vue';
 import AssetTable from './components/AssetTable.vue';
 import AssetDetailDrawer from './components/AssetDetailDrawer.vue';
 import AssetEventPanel from './components/AssetEventPanel.vue';
 import QrLookup from './components/QrLookup.vue';
+import LoginView from './components/LoginView.vue';
+import UserSettingsPanel from './components/UserSettingsPanel.vue';
 
 const activeView = ref('dashboard');
 const stats = ref<Stats>({ total: 0, status: {}, categories: [], locations: [], companies: [], amounts: { taxed: 0, untaxed: 0, tax: 0 } });
@@ -28,9 +30,15 @@ const importBusy = ref(false);
 const eventBusy = ref(false);
 const editBusy = ref(false);
 const toast = ref('');
+const currentUser = ref<AuthUser | null>(null);
+const authReady = ref(false);
+const users = ref<ManagedUser[]>([]);
+const userBusy = ref(false);
 
 const inUse = computed(() => stats.value.status['在用'] ?? 0);
 const idle = computed(() => stats.value.status['空闲'] ?? 0);
+const canWrite = computed(() => currentUser.value?.role === 'admin' || currentUser.value?.role === 'asset_manager');
+const canManageUsers = computed(() => currentUser.value?.role === 'admin');
 const activeTitle = computed(() => ({ dashboard: '经营分析看板', assets: '资产清单', scan: '扫码查询', events: '资产流转', settings: '系统设置' }[activeView.value] ?? '资产管理系统'));
 
 async function loadStats() { stats.value = await api.getStats(); }
@@ -43,6 +51,24 @@ async function loadAssets() {
   finally { loading.value = false; }
 }
 async function refresh() { error.value = ''; try { await Promise.all([loadStats(), loadAssets()]); } catch (err) { error.value = err instanceof Error ? err.message : '数据加载失败'; } }
+async function loadUsers() {
+  if (!canManageUsers.value) { users.value = []; return; }
+  try { users.value = (await api.listUsers()).users; }
+  catch (err) { error.value = err instanceof Error ? err.message : '用户列表加载失败'; }
+}
+async function bootstrapAuth() {
+  try { currentUser.value = await api.me(); await refresh(); }
+  catch { localStorage.removeItem('asset_token'); }
+  finally { authReady.value = true; }
+}
+async function onLoggedIn(user: AuthUser) { currentUser.value = user; await refresh(); }
+async function logout() { await api.logout(); currentUser.value = null; selected.value = null; flowAsset.value = null; }
+async function createUser(payload: { username: string; password: string; display_name: string; role: ManagedUser['role'] }) {
+  userBusy.value = true;
+  try { await api.createUser(payload); await loadUsers(); toast.value = '用户创建成功'; window.setTimeout(() => { toast.value = ''; }, 2400); }
+  catch (err) { error.value = err instanceof Error ? err.message : '用户创建失败'; }
+  finally { userBusy.value = false; }
+}
 async function selectAsset(asset: Asset) { try { selected.value = await api.getAsset(asset.asset_code); } catch (err) { error.value = err instanceof Error ? err.message : '资产详情加载失败'; } }
 async function lookupAsset(payload: { raw: string; assetCode: string }) {
   try {
@@ -101,17 +127,18 @@ async function confirmImport() {
   catch (err) { error.value = err instanceof Error ? err.message : '导入失败'; }
   finally { importBusy.value = false; }
 }
-function navigate(view: string) { activeView.value = view; if (view === 'events') { selected.value = null; flowAsset.value = null; } if (view === 'assets') { flowAsset.value = null; } if (view === 'assets' || view === 'events') void loadAssets(); }
+function navigate(view: string) { activeView.value = view; if (view === 'events') { selected.value = null; flowAsset.value = null; } if (view === 'assets') { flowAsset.value = null; } if (view === 'settings') void loadUsers(); if (view === 'assets' || view === 'events') void loadAssets(); }
 function applyFilters() { page.value = 1; void loadAssets(); }
-onMounted(refresh);
+onMounted(bootstrapAuth);
 </script>
 
 <template>
-  <div class="app-shell">
+  <LoginView v-if="authReady && !currentUser" @logged-in="onLoggedIn" />
+  <div v-else-if="authReady" class="app-shell">
     <SidebarNav :active="activeView" @navigate="navigate" />
     <main class="main-shell">
-      <header class="topbar"><div class="tenant"><span class="tenant-badge">资产管理</span><strong>重庆市九吨科技有限公司</strong><span class="chevron">⌄</span></div><div class="top-actions"><span>数据快照：2026-10-08</span><button class="avatar">管</button></div></header>
-      <div class="page-heading"><div><span class="eyebrow">资产管理平台</span><h1>{{ activeTitle }}</h1></div><div class="heading-actions"><input ref="importInput" type="file" accept=".xlsx,.xls" class="hidden-input" @change="onImportFile" /><button class="secondary-button" :disabled="importBusy" @click="importInput?.click()">{{ importBusy ? '处理中…' : '导入 Excel' }}</button><button class="primary-button" @click="activeView = 'scan'">扫码查询</button></div></div>
+      <header class="topbar"><div class="tenant"><span class="tenant-badge">资产管理</span><strong>重庆市九吨科技有限公司</strong><span class="chevron">⌄</span></div><div class="top-actions"><span>{{ currentUser?.display_name }} · {{ currentUser?.role === 'viewer' ? '只读' : '可操作' }}</span><button class="avatar" :title="'退出登录'" @click="logout">{{ currentUser?.display_name?.slice(0, 1) }}</button></div></header>
+      <div class="page-heading"><div><span class="eyebrow">资产管理平台</span><h1>{{ activeTitle }}</h1></div><div class="heading-actions"><input ref="importInput" type="file" accept=".xlsx,.xls" class="hidden-input" @change="onImportFile" /><button v-if="canWrite" class="secondary-button" :disabled="importBusy" @click="importInput?.click()">{{ importBusy ? '处理中…' : '导入 Excel' }}</button><button class="primary-button" @click="activeView = 'scan'">扫码查询</button></div></div>
       <div v-if="error" class="error-banner">{{ error }} <button @click="error = ''">×</button></div><div v-if="toast" class="toast">{{ toast }}</div>
 
       <section v-if="activeView === 'dashboard'" class="content-area">
@@ -122,12 +149,13 @@ onMounted(refresh);
 
       <section v-else-if="activeView === 'assets'" class="content-area"><div class="panel list-panel"><div class="filter-row"><div class="search-box"><span>⌕</span><input v-model="search" placeholder="搜索资产编码、名称、型号或序列号" @keyup.enter="applyFilters" /><button @click="applyFilters">搜索</button></div><select v-model="statusFilter" @change="applyFilters"><option value="">全部状态</option><option value="在用">在用</option><option value="空闲">空闲</option><option value="借出">借出</option><option value="维修">维修</option></select><select v-model="locationFilter" @change="applyFilters"><option value="">全部位置</option><option v-for="item in stats.locations" :key="item.name" :value="item.name">{{ item.name }}</option></select><button class="secondary-button" @click="refresh">刷新</button></div><div class="list-summary"><span>资产清单</span><strong>{{ total }}</strong><span>项</span></div><AssetTable :items="assets" :total="total" :page="page" :page-size="pageSize" :loading="loading" @select="selectAsset" @page="(next) => { page = next; loadAssets(); }" /></div></section>
 
-      <section v-else-if="activeView === 'events'" class="content-area"><div class="flow-grid"><div class="panel list-panel"><div class="filter-row"><div class="search-box"><span>⌕</span><input v-model="search" placeholder="搜索要操作的资产" @keyup.enter="applyFilters" /><button @click="applyFilters">搜索</button></div><select v-model="statusFilter" @change="applyFilters"><option value="">全部状态</option><option value="在用">在用</option><option value="空闲">空闲</option><option value="借出">借出</option><option value="维修">维修</option></select><button class="secondary-button" @click="refresh">刷新</button></div><div class="list-summary"><span>可操作资产</span><strong>{{ total }}</strong><span>项</span></div><AssetTable :items="assets" :total="total" :page="page" :page-size="pageSize" :loading="loading" @select="selectFlowAsset" @page="(next) => { page = next; loadAssets(); }" /></div><AssetEventPanel :asset="flowAsset" :busy="eventBusy" @submit="submitFlowEvent" /></div></section>
+      <section v-else-if="activeView === 'events'" class="content-area"><div class="flow-grid"><div class="panel list-panel"><div class="filter-row"><div class="search-box"><span>⌕</span><input v-model="search" placeholder="搜索要操作的资产" @keyup.enter="applyFilters" /><button @click="applyFilters">搜索</button></div><select v-model="statusFilter" @change="applyFilters"><option value="">全部状态</option><option value="在用">在用</option><option value="空闲">空闲</option><option value="借出">借出</option><option value="维修">维修</option></select><button class="secondary-button" @click="refresh">刷新</button></div><div class="list-summary"><span>可操作资产</span><strong>{{ total }}</strong><span>项</span></div><AssetTable :items="assets" :total="total" :page="page" :page-size="pageSize" :loading="loading" @select="selectFlowAsset" @page="(next) => { page = next; loadAssets(); }" /></div><AssetEventPanel :asset="flowAsset" :busy="eventBusy" :can-write="canWrite" @submit="submitFlowEvent" /></div></section>
 
       <section v-else-if="activeView === 'scan'" class="content-area scan-view"><QrLookup @lookup="lookupAsset" /></section>
+      <section v-else-if="activeView === 'settings'" class="content-area"><UserSettingsPanel :users="users" :can-write="canManageUsers" :busy="userBusy" @create="createUser" /></section>
       <section v-else class="content-area"><div class="panel placeholder-panel"><span class="eyebrow">{{ activeTitle }}</span><h2>这个模块将在下一阶段接入</h2><p>一期核心功能已经包含资产台账、二维码解析、Excel 导入、看板统计和流转记录。</p></div></section>
     </main>
-    <AssetDetailDrawer :asset="selected" :busy="eventBusy" :edit-busy="editBusy" @close="selected = null" @event="submitEvent" @update="updateAsset" />
+    <AssetDetailDrawer :asset="selected" :busy="eventBusy" :edit-busy="editBusy" :can-write="canWrite" @close="selected = null" @event="submitEvent" @update="updateAsset" />
     <div v-if="importPreview" class="modal-backdrop"><div class="import-modal"><span class="eyebrow">导入预览</span><h2>{{ importPreview.fileName }}</h2><p>确认后将按资产编码更新台账，空值不会覆盖已有信息。</p><div class="import-stats"><div><strong>{{ importPreview.preview.newRows }}</strong><span>新增</span></div><div><strong>{{ importPreview.preview.updatedRows }}</strong><span>更新</span></div><div><strong>{{ importPreview.preview.unchangedRows }}</strong><span>无变化</span></div><div class="danger"><strong>{{ importPreview.preview.invalidRows }}</strong><span>异常</span></div></div><div class="form-actions"><button class="secondary-button" @click="importPreview = null">取消</button><button class="primary-button" :disabled="importBusy" @click="confirmImport">{{ importBusy ? '导入中…' : '确认导入' }}</button></div></div></div>
   </div>
 </template>

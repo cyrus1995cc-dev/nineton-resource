@@ -2,7 +2,7 @@
 import { reactive, ref, watch } from 'vue';
 import type { Asset, AssetUpdateInput } from '../types';
 
-const props = defineProps<{ asset: Asset | null; busy?: boolean; editBusy?: boolean }>();
+const props = defineProps<{ asset: Asset | null; busy?: boolean; editBusy?: boolean; canWrite?: boolean }>();
 const emit = defineEmits<{
   close: [];
   event: [payload: { type: string; toAssignee?: string; toDepartment?: string; note?: string }];
@@ -77,7 +77,7 @@ function cancelEditing() {
 }
 
 function saveEditing() {
-  if (!props.asset || !form.name.trim()) return;
+  if (!props.asset || props.canWrite === false || !form.name.trim()) return;
   emit('update', { ...form, operatorName: '当前管理员' });
 }
 
@@ -99,7 +99,7 @@ function tabEvents() {
     <section class="drawer asset-info-drawer">
       <header class="drawer-header">
         <div><span class="eyebrow">资产信息</span><h2>{{ asset.asset_code }}</h2></div>
-        <div class="drawer-header-actions"><button class="secondary-button edit-trigger" @click="editing ? cancelEditing() : startEditing()">{{ editing ? '退出编辑' : '编辑资料' }}</button><button class="icon-button" aria-label="关闭" @click="emit('close')">×</button></div>
+        <div class="drawer-header-actions"><button v-if="canWrite !== false" class="secondary-button edit-trigger" @click="editing ? cancelEditing() : startEditing()">{{ editing ? '退出编辑' : '编辑资料' }}</button><button class="icon-button" aria-label="关闭" @click="emit('close')">×</button></div>
       </header>
 
       <div class="drawer-status"><span class="status-pill" :class="`status-${asset.status}`">{{ asset.status }}</span><span>{{ asset.name || '未命名资产' }}</span><span class="readonly-hint">资产编码只读</span></div>
@@ -166,8 +166,8 @@ function tabEvents() {
         </div>
         <div class="qr-raw"><label>二维码原文</label><code>{{ asset.qr_raw || '暂未记录' }}</code></div>
         <div class="drawer-actions">
-          <button v-if="asset.status === '空闲'" class="primary-button" @click="showClaim = true">领用资产</button>
-          <button v-if="asset.status === '在用' || asset.status === '借出'" class="secondary-button" :disabled="busy" @click="emit('event', { type: asset.status === '借出' ? '借出归还' : '归还' })">归还资产</button>
+          <button v-if="canWrite !== false && asset.status === '空闲'" class="primary-button" @click="showClaim = true">领用资产</button>
+          <button v-if="canWrite !== false && (asset.status === '在用' || asset.status === '借出')" class="secondary-button" :disabled="busy" @click="emit('event', { type: asset.status === '借出' ? '借出归还' : '归还' })">归还资产</button>
         </div>
         <div class="timeline"><div class="section-title"><h3>流转记录</h3><span>{{ asset.events?.length ?? 0 }} 条</span></div><div v-if="!asset.events?.length" class="muted">暂无流转记录</div><div v-for="event in asset.events" :key="event.id" class="timeline-item"><span class="timeline-dot"></span><div><strong>{{ event.type }}</strong><span>{{ event.operator_name || '系统' }} · {{ new Date(event.created_at).toLocaleString('zh-CN') }}</span><small v-if="event.note">{{ event.note }}</small></div></div></div>
       </template>

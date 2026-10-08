@@ -105,6 +105,25 @@ h3 { color: #263750; font-size: 14px; }
 .flow-empty { display: grid; place-items: center; min-height: 280px; text-align: center; }
 .flow-empty .scan-icon { margin-bottom: 13px; }
 .flow-empty p { max-width: 250px; margin-top: 9px; color: #8b9aaa; font-size: 12px; line-height: 1.7; }
+.login-shell { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: radial-gradient(circle at 20% 0%, #e9f5ff, transparent 38%), #f2f5f9; }
+.login-card { width: min(410px, 100%); padding: 38px; border: 1px solid #e2eaf2; border-radius: 14px; background: #fff; box-shadow: 0 16px 42px rgba(31, 65, 100, .1); }
+.login-brand { display: flex; align-items: center; gap: 10px; margin-bottom: 37px; color: #1683f7; font-size: 21px; font-weight: 800; }
+.login-card h1 { margin-top: 8px; font-size: 27px; }
+.login-intro { margin-top: 10px; color: #8493a5; font-size: 13px; line-height: 1.7; }
+.login-form { display: grid; gap: 16px; margin-top: 25px; }
+.login-form .field { gap: 7px; font-size: 12px; }
+.login-form .field input { padding: 11px 12px; font-size: 13px; }
+.login-error { margin: 18px 0 0; }
+.login-hint { display: block; margin-top: 19px; color: #a0adbb; font-size: 11px; }
+.settings-grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(280px, .8fr); gap: 14px; align-items: start; }
+.user-list { display: grid; gap: 1px; }
+.user-row { display: flex; align-items: center; gap: 11px; padding: 13px 0; border-bottom: 1px solid #f0f3f7; }
+.user-row > div { display: grid; gap: 3px; flex: 1; min-width: 0; }
+.user-row strong { color: #3a4d65; font-size: 13px; }.user-row small { color: #96a3b2; font-size: 11px; }
+.user-avatar { width: 31px; height: 31px; display: grid; place-items: center; border-radius: 50%; color: #2876cb; background: #eaf4ff; font-size: 13px; font-weight: 700; }
+.role-pill { padding: 4px 8px; border-radius: 5px; color: #6e7f92; background: #f1f4f7; font-size: 11px; white-space: nowrap; }
+.user-form { display: grid; gap: 14px; }
 @media (max-width: 1100px) { .sidebar { width: 186px; flex-basis: 186px; }.content-area, .page-heading { padding-left: 20px; padding-right: 20px; }.metrics-grid { grid-template-columns: repeat(2, 1fr); }.dashboard-grid.three { grid-template-columns: 1fr 1fr; }.quick-panel { grid-column: span 2; } }
 @media (max-width: 760px) { .app-shell { display: block; }.sidebar { width: 100%; height: auto; border-right: 0; border-bottom: 1px solid #e7edf4; }.brand { height: 58px; padding: 0 18px; }.sidebar nav { display: flex; overflow-x: auto; padding: 7px 10px; }.nav-item { width: auto; flex: 0 0 auto; padding: 9px 11px; font-size: 12px; }.nav-icon { display: none; }.sidebar-footer { display: none; }.topbar { height: 54px; padding: 0 16px; }.tenant strong { max-width: 145px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.top-actions > span { display: none; }.page-heading { padding: 19px 16px 14px; align-items: flex-start; flex-direction: column; }.heading-actions { width: 100%; }.heading-actions button { flex: 1; }.content-area { padding: 0 16px 24px; }.metrics-grid, .dashboard-grid, .dashboard-grid.three { grid-template-columns: 1fr; }.quick-panel { grid-column: auto; }.status-visual { justify-content: center; gap: 25px; padding: 10px 0; }.filter-row { padding: 12px; }.search-box { min-width: 100%; }.filter-row select, .filter-row > .secondary-button { flex: 1; }.drawer { padding: 21px 17px; }.asset-info-drawer { width: 100%; }.editor-layout { grid-template-columns: 1fr; }.editor-tabs { display: flex; overflow-x: auto; border-right: 0; border-bottom: 1px solid #e9eff5; }.editor-tabs button { flex: 0 0 auto; white-space: nowrap; }.editor-content { padding: 18px 15px 16px; }.form-grid { grid-template-columns: 1fr; }.field-wide { grid-column: auto; }.editor-footer { align-items: flex-start; flex-direction: column; }.editor-footer .form-actions { width: 100%; }.editor-footer .form-actions button { flex: 1; }.drawer-header-actions .edit-trigger { padding: 6px 9px; }.scan-card { padding: 28px 20px; margin-top: 15px; }.import-stats { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 960px) { .flow-grid { grid-template-columns: 1fr; }.flow-action-panel { position: static; } }
+@media (max-width: 760px) { .settings-grid { grid-template-columns: 1fr; } }

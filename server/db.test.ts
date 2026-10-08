@@ -10,6 +10,8 @@ describe('asset database', () => {
       'assets',
       'employees',
       'import_batches',
+      'sessions',
+      'users',
     ]);
 
     db.prepare("INSERT INTO assets (asset_code, name, status) VALUES ('CSJ-0431', '测试机', '空闲')").run();

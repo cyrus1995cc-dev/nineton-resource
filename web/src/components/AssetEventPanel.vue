@@ -4,7 +4,7 @@ import type { Asset } from '../types';
 
 type EventPayload = { type: string; toAssignee?: string; toDepartment?: string; toLocation?: string; note?: string };
 
-const props = defineProps<{ asset: Asset | null; busy?: boolean }>();
+const props = defineProps<{ asset: Asset | null; busy?: boolean; canWrite?: boolean }>();
 const emit = defineEmits<{ submit: [payload: EventPayload] }>();
 
 const action = ref('');
@@ -46,7 +46,8 @@ function submit() {
     <div v-if="asset">
       <div class="panel-header"><div><span class="eyebrow">资产操作</span><h2>{{ asset.asset_code }}</h2></div><span class="status-pill" :class="`status-${asset.status}`">{{ asset.status }}</span></div>
       <div class="flow-asset-summary"><strong>{{ asset.name || '未命名资产' }}</strong><span>{{ asset.location || '未设置位置' }} · {{ asset.assignee || '暂无使用人' }}</span></div>
-      <div v-if="!actionOptions.length" class="empty-history">当前状态暂无可用操作</div>
+      <div v-if="canWrite === false" class="empty-history">当前账号只有查看权限</div>
+      <div v-else-if="!actionOptions.length" class="empty-history">当前状态暂无可用操作</div>
       <form v-else class="event-form" @submit.prevent="submit">
         <label class="field"><span>选择操作</span><select v-model="action"><option v-for="item in actionOptions" :key="item" :value="item">{{ item }}</option></select></label>
         <template v-if="action === '领用' || action === '借出'"><label class="field"><span>{{ action === '借出' ? '借用人' : '使用人' }}</span><input v-model="assignee" required /></label><label class="field"><span>所属部门</span><input v-model="department" /></label></template>

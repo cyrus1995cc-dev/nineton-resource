@@ -8,10 +8,15 @@ import { createImportRouter } from './routes/imports';
 import { createAssetRouter } from './routes/assets';
 import { createEventRouter } from './routes/events';
 import { createStatsRouter } from './routes/stats';
+import { createAuthRouter } from './routes/auth';
+import { ensureDefaultAdmin } from './auth';
+import { requireAuth, requireRole } from './middleware/auth';
 
-export function createApp(options: { db?: DatabaseSync } = {}) {
+export function createApp(options: { db?: DatabaseSync; auth?: boolean } = {}) {
   const app = express();
   const db = options.db ?? openDatabase();
+  const authenticationEnabled = options.auth ?? !options.db;
+  ensureDefaultAdmin(db);
   app.use(cors());
   app.use(express.json({ limit: '2mb' }));
 
@@ -19,7 +24,9 @@ export function createApp(options: { db?: DatabaseSync } = {}) {
     res.json({ ok: true });
   });
 
-  app.use('/api/imports', createImportRouter(db));
+  app.use('/api/auth', createAuthRouter(db));
+  if (authenticationEnabled) app.use('/api', requireAuth(db));
+  app.use('/api/imports', requireRole('admin', 'asset_manager'), createImportRouter(db));
   app.use('/api/assets', createAssetRouter(db));
   app.use('/api/assets', createEventRouter(db));
   app.use('/api/stats', createStatsRouter(db));
