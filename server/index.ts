@@ -5,6 +5,9 @@ import { join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { openDatabase } from './db';
 import { createImportRouter } from './routes/imports';
+import { createAssetRouter } from './routes/assets';
+import { createEventRouter } from './routes/events';
+import { createStatsRouter } from './routes/stats';
 
 export function createApp(options: { db?: DatabaseSync } = {}) {
   const app = express();
@@ -17,6 +20,9 @@ export function createApp(options: { db?: DatabaseSync } = {}) {
   });
 
   app.use('/api/imports', createImportRouter(db));
+  app.use('/api/assets', createAssetRouter(db));
+  app.use('/api/assets', createEventRouter(db));
+  app.use('/api/stats', createStatsRouter(db));
 
   const distPath = join(process.cwd(), 'dist');
   if (existsSync(distPath)) app.use(express.static(distPath));

@@ -154,7 +154,7 @@ export function applyImport(db: DatabaseSync, rows: ImportRow[], batchId: string
         const columns = ['asset_code', ...dbFields, 'source_updated_at'];
         const values = [row.asset_code, ...dbFields.map((field) => row[field]), now];
         const placeholders = columns.map(() => '?').join(', ');
-        db.prepare(`INSERT INTO assets (${columns.join(', ')}) VALUES (${placeholders})`).run(...values);
+        db.prepare(`INSERT INTO assets (${columns.join(', ')}) VALUES (${placeholders})`).run(...(values as any[]));
       } else {
         const updates: string[] = [];
         const values: unknown[] = [];
@@ -166,7 +166,7 @@ export function applyImport(db: DatabaseSync, rows: ImportRow[], batchId: string
         }
         updates.push('source_updated_at = ?', 'updated_at_system = CURRENT_TIMESTAMP');
         values.push(now, row.asset_code);
-        db.prepare(`UPDATE assets SET ${updates.join(', ')} WHERE asset_code = ?`).run(...values);
+        db.prepare(`UPDATE assets SET ${updates.join(', ')} WHERE asset_code = ?`).run(...(values as any[]));
       }
     }
     db.prepare(`INSERT INTO import_batches (file_name, checksum, total_rows, new_rows, updated_rows, unchanged_rows, invalid_rows, errors_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
