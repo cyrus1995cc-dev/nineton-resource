@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">自有资产管理系统</string>
+    <string name="title_activity_main">自有资产管理系统</string>
+    <string name="package_name">com.asset.local</string>
+    <string name="custom_url_scheme">com.asset.local</string>
+</resources>
