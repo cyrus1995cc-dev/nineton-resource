@@ -6,6 +6,7 @@ import SidebarNav from './components/SidebarNav.vue';
 import MetricCard from './components/MetricCard.vue';
 import AssetTable from './components/AssetTable.vue';
 import AssetDetailDrawer from './components/AssetDetailDrawer.vue';
+import QrLookup from './components/QrLookup.vue';
 
 const activeView = ref('dashboard');
 const stats = ref<Stats>({ total: 0, status: {}, categories: [], locations: [], companies: [], amounts: { taxed: 0, untaxed: 0, tax: 0 } });
@@ -84,7 +85,7 @@ onMounted(refresh);
 
       <section v-else-if="activeView === 'assets' || activeView === 'events'" class="content-area"><div class="panel list-panel"><div class="filter-row"><div class="search-box"><span>⌕</span><input v-model="search" placeholder="搜索资产编码、名称、型号或序列号" @keyup.enter="applyFilters" /><button @click="applyFilters">搜索</button></div><select v-model="statusFilter" @change="applyFilters"><option value="">全部状态</option><option value="在用">在用</option><option value="空闲">空闲</option><option value="借出">借出</option><option value="维修">维修</option></select><select v-model="locationFilter" @change="applyFilters"><option value="">全部位置</option><option v-for="item in stats.locations" :key="item.name" :value="item.name">{{ item.name }}</option></select><button class="secondary-button" @click="refresh">刷新</button></div><div class="list-summary"><span>资产清单</span><strong>{{ total }}</strong><span>项</span></div><AssetTable :items="assets" :total="total" :page="page" :page-size="pageSize" :loading="loading" @select="selectAsset" @page="(next) => { page = next; loadAssets(); }" /></div></section>
 
-      <section v-else-if="activeView === 'scan'" class="content-area scan-view"><div class="scan-card"><div class="scan-icon">⌕</div><span class="eyebrow">移动扫码</span><h2>扫描资产二维码</h2><p>二维码内容会在本系统内解析为资产编码，不会打开公贝云网页。</p><input class="scan-input" placeholder="粘贴二维码原文或输入资产编码" @keyup.enter="selectAsset({ asset_code: ($event.target as HTMLInputElement).value } as Asset)" /><button class="primary-button full-button" @click="toast = 'Android App 将使用摄像头扫描；当前可粘贴二维码原文查询'">打开摄像头扫码</button><div class="scan-tip">当前网页版支持粘贴二维码内容。Android App 接入后将启用原生摄像头。</div></div></section>
+      <section v-else-if="activeView === 'scan'" class="content-area scan-view"><QrLookup @lookup="({ assetCode }) => selectAsset({ asset_code: assetCode } as Asset)" /></section>
       <section v-else class="content-area"><div class="panel placeholder-panel"><span class="eyebrow">{{ activeTitle }}</span><h2>这个模块将在下一阶段接入</h2><p>一期核心功能已经包含资产台账、二维码解析、Excel 导入、看板统计和流转记录。</p></div></section>
     </main>
     <AssetDetailDrawer :asset="selected" :busy="eventBusy" @close="selected = null" @event="submitEvent" />
