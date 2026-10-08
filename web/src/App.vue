@@ -6,6 +6,7 @@ import SidebarNav from './components/SidebarNav.vue';
 import MetricCard from './components/MetricCard.vue';
 import AssetTable from './components/AssetTable.vue';
 import AssetDetailDrawer from './components/AssetDetailDrawer.vue';
+import AssetEventPanel from './components/AssetEventPanel.vue';
 import QrLookup from './components/QrLookup.vue';
 
 const activeView = ref('dashboard');
@@ -18,6 +19,7 @@ const search = ref('');
 const statusFilter = ref('');
 const locationFilter = ref('');
 const selected = ref<Asset | null>(null);
+const flowAsset = ref<Asset | null>(null);
 const loading = ref(false);
 const error = ref('');
 const importInput = ref<HTMLInputElement | null>(null);
@@ -58,6 +60,22 @@ async function submitEvent(payload: Record<string, unknown>) {
   } catch (err) { error.value = err instanceof Error ? err.message : '资产操作失败'; }
   finally { eventBusy.value = false; }
 }
+async function selectFlowAsset(asset: Asset) {
+  try { flowAsset.value = await api.getAsset(asset.asset_code); }
+  catch (err) { error.value = err instanceof Error ? err.message : '资产详情加载失败'; }
+}
+async function submitFlowEvent(payload: Record<string, unknown>) {
+  if (!flowAsset.value) return;
+  eventBusy.value = true;
+  try {
+    const result = await api.createEvent(flowAsset.value.asset_code, { ...payload, operatorName: '当前管理员', requestId: crypto.randomUUID() });
+    flowAsset.value = result.asset;
+    toast.value = result.replayed ? '操作已处理' : '资产操作成功';
+    await refresh();
+    window.setTimeout(() => { toast.value = ''; }, 2400);
+  } catch (err) { error.value = err instanceof Error ? err.message : '资产操作失败'; }
+  finally { eventBusy.value = false; }
+}
 async function updateAsset(payload: Record<string, unknown>) {
   if (!selected.value) return;
   editBusy.value = true;
@@ -83,7 +101,7 @@ async function confirmImport() {
   catch (err) { error.value = err instanceof Error ? err.message : '导入失败'; }
   finally { importBusy.value = false; }
 }
-function navigate(view: string) { activeView.value = view; if (view === 'assets' || view === 'events') void loadAssets(); }
+function navigate(view: string) { activeView.value = view; if (view === 'events') { selected.value = null; flowAsset.value = null; } if (view === 'assets') { flowAsset.value = null; } if (view === 'assets' || view === 'events') void loadAssets(); }
 function applyFilters() { page.value = 1; void loadAssets(); }
 onMounted(refresh);
 </script>
@@ -102,7 +120,9 @@ onMounted(refresh);
         <div class="dashboard-grid three"><article class="panel"><div class="panel-header"><div><span class="eyebrow">位置统计</span><h2>楼层分布</h2></div></div><div class="simple-list"><div v-for="item in stats.locations.slice(0, 6)" :key="item.name"><span>{{ item.name }}</span><strong>{{ item.count }}</strong></div></div></article><article class="panel"><div class="panel-header"><div><span class="eyebrow">公司统计</span><h2>所属公司</h2></div></div><div class="simple-list"><div v-for="item in stats.companies.slice(0, 6)" :key="item.name"><span class="truncate">{{ item.name }}</span><strong>{{ item.count }}</strong></div></div></article><article class="panel quick-panel"><span class="eyebrow">快捷操作</span><h2>开始管理资产</h2><button class="quick-action" @click="navigate('assets')">查看资产清单 <span>→</span></button><button class="quick-action" @click="navigate('scan')">扫描二维码查询 <span>⌕</span></button><button class="quick-action" @click="importInput?.click()">批量导入 Excel <span>↑</span></button></article></div>
       </section>
 
-      <section v-else-if="activeView === 'assets' || activeView === 'events'" class="content-area"><div class="panel list-panel"><div class="filter-row"><div class="search-box"><span>⌕</span><input v-model="search" placeholder="搜索资产编码、名称、型号或序列号" @keyup.enter="applyFilters" /><button @click="applyFilters">搜索</button></div><select v-model="statusFilter" @change="applyFilters"><option value="">全部状态</option><option value="在用">在用</option><option value="空闲">空闲</option><option value="借出">借出</option><option value="维修">维修</option></select><select v-model="locationFilter" @change="applyFilters"><option value="">全部位置</option><option v-for="item in stats.locations" :key="item.name" :value="item.name">{{ item.name }}</option></select><button class="secondary-button" @click="refresh">刷新</button></div><div class="list-summary"><span>资产清单</span><strong>{{ total }}</strong><span>项</span></div><AssetTable :items="assets" :total="total" :page="page" :page-size="pageSize" :loading="loading" @select="selectAsset" @page="(next) => { page = next; loadAssets(); }" /></div></section>
+      <section v-else-if="activeView === 'assets'" class="content-area"><div class="panel list-panel"><div class="filter-row"><div class="search-box"><span>⌕</span><input v-model="search" placeholder="搜索资产编码、名称、型号或序列号" @keyup.enter="applyFilters" /><button @click="applyFilters">搜索</button></div><select v-model="statusFilter" @change="applyFilters"><option value="">全部状态</option><option value="在用">在用</option><option value="空闲">空闲</option><option value="借出">借出</option><option value="维修">维修</option></select><select v-model="locationFilter" @change="applyFilters"><option value="">全部位置</option><option v-for="item in stats.locations" :key="item.name" :value="item.name">{{ item.name }}</option></select><button class="secondary-button" @click="refresh">刷新</button></div><div class="list-summary"><span>资产清单</span><strong>{{ total }}</strong><span>项</span></div><AssetTable :items="assets" :total="total" :page="page" :page-size="pageSize" :loading="loading" @select="selectAsset" @page="(next) => { page = next; loadAssets(); }" /></div></section>
+
+      <section v-else-if="activeView === 'events'" class="content-area"><div class="flow-grid"><div class="panel list-panel"><div class="filter-row"><div class="search-box"><span>⌕</span><input v-model="search" placeholder="搜索要操作的资产" @keyup.enter="applyFilters" /><button @click="applyFilters">搜索</button></div><select v-model="statusFilter" @change="applyFilters"><option value="">全部状态</option><option value="在用">在用</option><option value="空闲">空闲</option><option value="借出">借出</option><option value="维修">维修</option></select><button class="secondary-button" @click="refresh">刷新</button></div><div class="list-summary"><span>可操作资产</span><strong>{{ total }}</strong><span>项</span></div><AssetTable :items="assets" :total="total" :page="page" :page-size="pageSize" :loading="loading" @select="selectFlowAsset" @page="(next) => { page = next; loadAssets(); }" /></div><AssetEventPanel :asset="flowAsset" :busy="eventBusy" @submit="submitFlowEvent" /></div></section>
 
       <section v-else-if="activeView === 'scan'" class="content-area scan-view"><QrLookup @lookup="lookupAsset" /></section>
       <section v-else class="content-area"><div class="panel placeholder-panel"><span class="eyebrow">{{ activeTitle }}</span><h2>这个模块将在下一阶段接入</h2><p>一期核心功能已经包含资产台账、二维码解析、Excel 导入、看板统计和流转记录。</p></div></section>
