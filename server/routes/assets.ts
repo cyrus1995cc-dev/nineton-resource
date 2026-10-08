@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import type { DatabaseSync } from 'node:sqlite';
-import { createAssetEvent, getAsset, listAssets } from '../repositories/assets';
+import { getAsset, listAssets, saveAssetQr } from '../repositories/assets';
 
 export function createAssetRouter(db: DatabaseSync) {
   const router = Router();
@@ -11,6 +11,12 @@ export function createAssetRouter(db: DatabaseSync) {
   router.get('/:assetCode', (req, res) => {
     const asset = getAsset(db, req.params.assetCode);
     return asset ? res.json(asset) : res.status(404).json({ message: '资产不存在' });
+  });
+  router.post('/:assetCode/qr', (req, res) => {
+    const result = saveAssetQr(db, req.params.assetCode, String(req.body?.raw ?? ''));
+    if (result.status === 'not_found') return res.status(404).json({ message: '资产不存在' });
+    if (result.status === 'invalid') return res.status(400).json({ message: '二维码内容与资产编码不匹配' });
+    return res.json(result);
   });
   return router;
 }

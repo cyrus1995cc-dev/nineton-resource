@@ -31,6 +31,15 @@ describe('asset API', () => {
     expect(response.body.events).toEqual([]);
   });
 
+  it('stores the exact scanned QR string without navigating to it', async () => {
+    const { app } = seededApp();
+    const raw = 'https://d.gongbeiyun.com/a/58b7d/57771/CSJ-0431';
+    const saved = await request(app).post('/api/assets/CSJ-0431/qr').send({ raw });
+    expect(saved.status).toBe(200);
+    expect(saved.body.qr_raw).toBe(raw);
+    expect(saved.body.qr_format).toBe('gongbeiyun_url');
+  });
+
   it('records an idempotent claim and return event', async () => {
     const { app } = seededApp();
     const claim = await request(app).post('/api/assets/CSJ-0431/events').send({

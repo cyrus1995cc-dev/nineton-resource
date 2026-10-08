@@ -41,6 +41,12 @@ async function loadAssets() {
 }
 async function refresh() { error.value = ''; try { await Promise.all([loadStats(), loadAssets()]); } catch (err) { error.value = err instanceof Error ? err.message : '数据加载失败'; } }
 async function selectAsset(asset: Asset) { try { selected.value = await api.getAsset(asset.asset_code); } catch (err) { error.value = err instanceof Error ? err.message : '资产详情加载失败'; } }
+async function lookupAsset(payload: { raw: string; assetCode: string }) {
+  try {
+    await api.saveQr(payload.assetCode, payload.raw);
+    await selectAsset({ asset_code: payload.assetCode } as Asset);
+  } catch (err) { error.value = err instanceof Error ? err.message : '二维码保存失败'; }
+}
 async function submitEvent(payload: Record<string, unknown>) {
   if (!selected.value) return;
   eventBusy.value = true;
@@ -85,7 +91,7 @@ onMounted(refresh);
 
       <section v-else-if="activeView === 'assets' || activeView === 'events'" class="content-area"><div class="panel list-panel"><div class="filter-row"><div class="search-box"><span>⌕</span><input v-model="search" placeholder="搜索资产编码、名称、型号或序列号" @keyup.enter="applyFilters" /><button @click="applyFilters">搜索</button></div><select v-model="statusFilter" @change="applyFilters"><option value="">全部状态</option><option value="在用">在用</option><option value="空闲">空闲</option><option value="借出">借出</option><option value="维修">维修</option></select><select v-model="locationFilter" @change="applyFilters"><option value="">全部位置</option><option v-for="item in stats.locations" :key="item.name" :value="item.name">{{ item.name }}</option></select><button class="secondary-button" @click="refresh">刷新</button></div><div class="list-summary"><span>资产清单</span><strong>{{ total }}</strong><span>项</span></div><AssetTable :items="assets" :total="total" :page="page" :page-size="pageSize" :loading="loading" @select="selectAsset" @page="(next) => { page = next; loadAssets(); }" /></div></section>
 
-      <section v-else-if="activeView === 'scan'" class="content-area scan-view"><QrLookup @lookup="({ assetCode }) => selectAsset({ asset_code: assetCode } as Asset)" /></section>
+      <section v-else-if="activeView === 'scan'" class="content-area scan-view"><QrLookup @lookup="lookupAsset" /></section>
       <section v-else class="content-area"><div class="panel placeholder-panel"><span class="eyebrow">{{ activeTitle }}</span><h2>这个模块将在下一阶段接入</h2><p>一期核心功能已经包含资产台账、二维码解析、Excel 导入、看板统计和流转记录。</p></div></section>
     </main>
     <AssetDetailDrawer :asset="selected" :busy="eventBusy" @close="selected = null" @event="submitEvent" />

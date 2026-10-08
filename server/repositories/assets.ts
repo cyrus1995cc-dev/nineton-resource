@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
+import { parseQr } from '../../shared/qr';
 
 export type AssetEventInput = {
   type: string;
@@ -48,6 +49,15 @@ export function getAsset(db: DatabaseSync, assetCode: string) {
   if (!row) return null;
   const events = db.prepare('SELECT * FROM asset_events WHERE asset_code = ? ORDER BY id DESC').all(assetCode);
   return { ...mapAsset(row), events };
+}
+
+export function saveAssetQr(db: DatabaseSync, assetCode: string, raw: string) {
+  const parsed = parseQr(raw);
+  if (!parsed.assetCode || parsed.assetCode !== assetCode) return { status: 'invalid' as const };
+  const result = db.prepare('UPDATE assets SET qr_raw = ?, qr_format = ?, updated_at_system = CURRENT_TIMESTAMP WHERE asset_code = ?')
+    .run(parsed.raw, parsed.format, assetCode);
+  if (!result.changes) return { status: 'not_found' as const };
+  return { status: 'saved' as const, qr_raw: parsed.raw, qr_format: parsed.format };
 }
 
 function eventTransition(asset: Record<string, unknown>, input: AssetEventInput) {

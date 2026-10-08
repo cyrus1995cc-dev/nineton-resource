@@ -15,6 +15,9 @@ export const api = {
     return request<AssetListResponse>(`/api/assets?${query}`);
   },
   getAsset: (assetCode: string) => request<Asset>(`/api/assets/${encodeURIComponent(assetCode)}`),
+  saveQr: (assetCode: string, raw: string) => request<{ qr_raw: string; qr_format: string }>(`/api/assets/${encodeURIComponent(assetCode)}/qr`, {
+    method: 'POST', body: JSON.stringify({ raw }),
+  }),
   createEvent: (assetCode: string, input: Record<string, unknown>) => request<{ asset: Asset; event: unknown; replayed?: boolean }>(`/api/assets/${encodeURIComponent(assetCode)}/events`, {
     method: 'POST', body: JSON.stringify(input),
   }),
