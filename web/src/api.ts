@@ -1,4 +1,4 @@
-import type { Asset, AssetListResponse, ImportResponse, Stats } from './types';
+import type { Asset, AssetListResponse, AssetUpdateInput, ImportResponse, Stats } from './types';
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, { headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) }, ...init });
@@ -15,6 +15,9 @@ export const api = {
     return request<AssetListResponse>(`/api/assets?${query}`);
   },
   getAsset: (assetCode: string) => request<Asset>(`/api/assets/${encodeURIComponent(assetCode)}`),
+  updateAsset: (assetCode: string, input: AssetUpdateInput) => request<{ asset: Asset; event: unknown }>(`/api/assets/${encodeURIComponent(assetCode)}`, {
+    method: 'PATCH', body: JSON.stringify(input),
+  }),
   saveQr: (assetCode: string, raw: string) => request<{ qr_raw: string; qr_format: string }>(`/api/assets/${encodeURIComponent(assetCode)}/qr`, {
     method: 'POST', body: JSON.stringify({ raw }),
   }),

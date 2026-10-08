@@ -12,12 +12,42 @@ export type AssetEventInput = {
   requestId?: string;
 };
 
+export type AssetUpdateInput = {
+  category_level1?: string;
+  category_path?: string;
+  name?: string;
+  location?: string;
+  company?: string;
+  model?: string;
+  cpu?: string;
+  discrete_gpu?: string;
+  memory?: string;
+  gpu_model?: string;
+  serial_number?: string;
+  remark?: string;
+  photo_url?: string;
+  assignee?: string;
+  department?: string;
+  received_at?: string;
+  amount_taxed?: number;
+  amount_untaxed?: number;
+  tax_amount?: number;
+  operatorName?: string;
+  note?: string;
+};
+
 const editableFields = [
   'id', 'asset_code', 'qr_raw', 'qr_format', 'category_level1', 'category_path', 'created_at', 'name', 'status',
   'location', 'company', 'model', 'cpu', 'discrete_gpu', 'memory', 'gpu_model', 'serial_number', 'remark',
   'photo_url', 'assignee', 'department', 'received_at', 'amount_taxed', 'amount_untaxed', 'tax_amount',
   'source_updated_at', 'created_at_system', 'updated_at_system',
 ];
+
+const assetUpdateFields = [
+  'category_level1', 'category_path', 'name', 'location', 'company', 'model', 'cpu', 'discrete_gpu',
+  'memory', 'gpu_model', 'serial_number', 'remark', 'photo_url', 'assignee', 'department', 'received_at',
+  'amount_taxed', 'amount_untaxed', 'tax_amount',
+] as const;
 
 function mapAsset(row: Record<string, unknown> | undefined) {
   if (!row) return null;
@@ -58,6 +88,41 @@ export function saveAssetQr(db: DatabaseSync, assetCode: string, raw: string) {
     .run(parsed.raw, parsed.format, assetCode);
   if (!result.changes) return { status: 'not_found' as const };
   return { status: 'saved' as const, qr_raw: parsed.raw, qr_format: parsed.format };
+}
+
+export function updateAsset(db: DatabaseSync, assetCode: string, input: AssetUpdateInput) {
+  const asset = db.prepare('SELECT * FROM assets WHERE asset_code = ?').get(assetCode) as Record<string, unknown> | undefined;
+  if (!asset) return { status: 'not_found' as const };
+
+  const updates: string[] = [];
+  const values: unknown[] = [];
+  for (const field of assetUpdateFields) {
+    if (input[field] === undefined) continue;
+    updates.push(`${field} = ?`);
+    values.push(input[field]);
+  }
+  if (!updates.length) return { status: 'empty' as const };
+
+  const nextAssignee = input.assignee ?? String(asset.assignee ?? '');
+  const nextDepartment = input.department ?? String(asset.department ?? '');
+  const nextLocation = input.location ?? String(asset.location ?? '');
+  db.exec('BEGIN');
+  try {
+    values.push(assetCode);
+    db.prepare(`UPDATE assets SET ${updates.join(', ')}, updated_at_system = CURRENT_TIMESTAMP WHERE asset_code = ?`).run(...(values as any[]));
+    const event = db.prepare(`INSERT INTO asset_events
+      (asset_id, asset_code, type, operator_name, from_status, to_status, from_assignee, to_assignee,
+       from_department, to_department, from_location, to_location, note)
+      VALUES (?, ?, '编辑', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(...([asset.id as number, assetCode, input.operatorName ?? '', asset.status as string, asset.status as string,
+        asset.assignee ?? '', nextAssignee, asset.department ?? '', nextDepartment, asset.location ?? '', nextLocation,
+        input.note ?? ''] as any[]));
+    db.exec('COMMIT');
+    return { status: 'updated' as const, asset: getAsset(db, assetCode), event: db.prepare('SELECT * FROM asset_events WHERE id = ?').get(event.lastInsertRowid) };
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
 }
 
 function eventTransition(asset: Record<string, unknown>, input: AssetEventInput) {

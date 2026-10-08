@@ -24,6 +24,7 @@ const importInput = ref<HTMLInputElement | null>(null);
 const importPreview = ref<ImportResponse | null>(null);
 const importBusy = ref(false);
 const eventBusy = ref(false);
+const editBusy = ref(false);
 const toast = ref('');
 
 const inUse = computed(() => stats.value.status['在用'] ?? 0);
@@ -56,6 +57,18 @@ async function submitEvent(payload: Record<string, unknown>) {
     window.setTimeout(() => { toast.value = ''; }, 2400);
   } catch (err) { error.value = err instanceof Error ? err.message : '资产操作失败'; }
   finally { eventBusy.value = false; }
+}
+async function updateAsset(payload: Record<string, unknown>) {
+  if (!selected.value) return;
+  editBusy.value = true;
+  try {
+    const result = await api.updateAsset(selected.value.asset_code, payload as any);
+    selected.value = result.asset;
+    toast.value = '资产资料保存成功';
+    await refresh();
+    window.setTimeout(() => { toast.value = ''; }, 2400);
+  } catch (err) { error.value = err instanceof Error ? err.message : '资产资料保存失败'; }
+  finally { editBusy.value = false; }
 }
 async function onImportFile(event: Event) {
   const input = event.target as HTMLInputElement; const file = input.files?.[0]; if (!file) return;
@@ -94,7 +107,7 @@ onMounted(refresh);
       <section v-else-if="activeView === 'scan'" class="content-area scan-view"><QrLookup @lookup="lookupAsset" /></section>
       <section v-else class="content-area"><div class="panel placeholder-panel"><span class="eyebrow">{{ activeTitle }}</span><h2>这个模块将在下一阶段接入</h2><p>一期核心功能已经包含资产台账、二维码解析、Excel 导入、看板统计和流转记录。</p></div></section>
     </main>
-    <AssetDetailDrawer :asset="selected" :busy="eventBusy" @close="selected = null" @event="submitEvent" />
+    <AssetDetailDrawer :asset="selected" :busy="eventBusy" :edit-busy="editBusy" @close="selected = null" @event="submitEvent" @update="updateAsset" />
     <div v-if="importPreview" class="modal-backdrop"><div class="import-modal"><span class="eyebrow">导入预览</span><h2>{{ importPreview.fileName }}</h2><p>确认后将按资产编码更新台账，空值不会覆盖已有信息。</p><div class="import-stats"><div><strong>{{ importPreview.preview.newRows }}</strong><span>新增</span></div><div><strong>{{ importPreview.preview.updatedRows }}</strong><span>更新</span></div><div><strong>{{ importPreview.preview.unchangedRows }}</strong><span>无变化</span></div><div class="danger"><strong>{{ importPreview.preview.invalidRows }}</strong><span>异常</span></div></div><div class="form-actions"><button class="secondary-button" @click="importPreview = null">取消</button><button class="primary-button" :disabled="importBusy" @click="confirmImport">{{ importBusy ? '导入中…' : '确认导入' }}</button></div></div></div>
   </div>
 </template>

@@ -28,6 +28,11 @@ export type Asset = {
   events?: AssetEvent[];
 };
 
+export type AssetUpdateInput = Pick<Asset, 'category_level1' | 'category_path' | 'name' | 'location' | 'company' | 'model' | 'cpu' | 'discrete_gpu' | 'memory' | 'gpu_model' | 'serial_number' | 'remark' | 'photo_url' | 'assignee' | 'department' | 'received_at' | 'amount_taxed' | 'amount_untaxed' | 'tax_amount'> & {
+  operatorName?: string;
+  note?: string;
+};
+
 export type AssetEvent = {
   id: number;
   type: string;

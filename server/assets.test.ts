@@ -40,6 +40,20 @@ describe('asset API', () => {
     expect(saved.body.qr_format).toBe('gongbeiyun_url');
   });
 
+  it('edits asset fields while keeping the asset code immutable', async () => {
+    const { app } = seededApp();
+    const response = await request(app).patch('/api/assets/CSJ-0431').send({
+      asset_code: 'SHOULD-NOT-CHANGE', name: '办公测试机', model: 'iPhone 15', location: '16楼', assignee: '王五', department: '行政部',
+      amount_taxed: 2999, operatorName: '管理员',
+    });
+    expect(response.status).toBe(200);
+    expect(response.body.asset.asset_code).toBe('CSJ-0431');
+    expect(response.body.asset.name).toBe('办公测试机');
+    expect(response.body.asset.location).toBe('16楼');
+    expect(response.body.asset.amount_taxed).toBe(2999);
+    expect(response.body.asset.events[0].type).toBe('编辑');
+  });
+
   it('records an idempotent claim and return event', async () => {
     const { app } = seededApp();
     const claim = await request(app).post('/api/assets/CSJ-0431/events').send({
