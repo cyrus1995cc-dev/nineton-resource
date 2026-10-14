@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import { parseQr } from '../../shared/qr';
+import { availableFlowTypes, type FlowType } from '../../shared/flows';
 
 export type AssetEventInput = {
   type: string;
@@ -10,6 +11,7 @@ export type AssetEventInput = {
   toLocation?: string;
   note?: string;
   requestId?: string;
+  flowId?: number;
 };
 
 export type AssetUpdateInput = {
@@ -77,7 +79,9 @@ export function listAssets(db: DatabaseSync, params: { search?: string; status?:
 export function getAsset(db: DatabaseSync, assetCode: string) {
   const row = db.prepare('SELECT * FROM assets WHERE asset_code = ?').get(assetCode) as Record<string, unknown> | undefined;
   if (!row) return null;
-  const events = db.prepare('SELECT * FROM asset_events WHERE asset_code = ? ORDER BY id DESC').all(assetCode);
+  const events = (db.prepare(`SELECT e.*, f.document_no FROM asset_events e LEFT JOIN asset_flows f ON f.id = e.flow_id
+    WHERE e.asset_code = ? ORDER BY e.id DESC`).all(assetCode) as Array<Record<string, unknown>>)
+    .map((event) => ({ ...event, changes: JSON.parse(String(event.changes_json ?? '[]')) }));
   return { ...mapAsset(row), events };
 }
 
@@ -112,17 +116,19 @@ export function updateAsset(db: DatabaseSync, assetCode: string, input: AssetUpd
   const nextAssignee = input.assignee ?? String(asset.assignee ?? '');
   const nextDepartment = input.department ?? String(asset.department ?? '');
   const nextLocation = input.location ?? String(asset.location ?? '');
+  const changes = assetUpdateFields.filter((field) => input[field] !== undefined && String(input[field]) !== String(asset[field] ?? ''))
+    .map((field) => ({ field, before: asset[field] ?? '', after: input[field] }));
   db.exec('BEGIN');
   try {
     values.push(assetCode);
     db.prepare(`UPDATE assets SET ${updates.join(', ')}, updated_at_system = CURRENT_TIMESTAMP WHERE asset_code = ?`).run(...(values as any[]));
     const event = db.prepare(`INSERT INTO asset_events
       (asset_id, asset_code, type, operator_name, from_status, to_status, from_assignee, to_assignee,
-       from_department, to_department, from_location, to_location, note)
-      VALUES (?, ?, '编辑', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+       from_department, to_department, from_location, to_location, note, changes_json)
+      VALUES (?, ?, '编辑', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(...([asset.id as number, assetCode, input.operatorName ?? '', asset.status as string, asset.status as string,
         asset.assignee ?? '', nextAssignee, asset.department ?? '', nextDepartment, asset.location ?? '', nextLocation,
-        input.note ?? ''] as any[]));
+        input.note ?? '', JSON.stringify(changes)] as any[]));
     db.exec('COMMIT');
     return { status: 'updated' as const, asset: getAsset(db, assetCode), event: db.prepare('SELECT * FROM asset_events WHERE id = ?').get(event.lastInsertRowid) };
   } catch (error) {
@@ -141,9 +147,10 @@ function eventTransition(asset: Record<string, unknown>, input: AssetEventInput)
     借出归还: { status: '空闲', clearAssignee: true },
     维修: { status: '维修' },
     报废: { status: '报废' },
+    报失: { status: '丢失' },
+    交接: { status: currentStatus },
   };
-  if (type === '领用' && currentStatus !== '空闲') throw new Error(`资产当前状态为${currentStatus}，不能领用`);
-  if ((type === '归还' || type === '借出归还') && !['在用', '借出'].includes(currentStatus)) throw new Error(`资产当前状态为${currentStatus}，不能归还`);
+  if (!availableFlowTypes(currentStatus).includes(type as FlowType)) throw new Error(`资产当前状态为${currentStatus}，不能${type}`);
   if (type === '调拨') return { status: currentStatus, clearAssignee: false };
   const transition = allowed[type];
   if (!transition) throw new Error(`不支持的资产操作：${type}`);
@@ -155,27 +162,34 @@ export function createAssetEvent(db: DatabaseSync, assetCode: string, input: Ass
   if (!asset) return { status: 'not_found' as const };
   const requestId = input.requestId || randomUUID();
   const replay = db.prepare('SELECT * FROM asset_events WHERE request_id = ?').get(requestId) as Record<string, unknown> | undefined;
-  if (replay) return { status: 'replayed' as const, event: replay, asset: getAsset(db, assetCode) };
+  if (replay) {
+    if (replay.asset_code !== assetCode || replay.type !== input.type) throw new Error('重复请求与原资产操作不一致');
+    return { status: 'replayed' as const, event: replay, asset: getAsset(db, assetCode) };
+  }
   const transition = eventTransition(asset, input);
   const nextStatus = transition.status;
   const nextAssignee = transition.clearAssignee ? '' : input.toAssignee ?? String(asset.assignee ?? '');
   const nextDepartment = transition.clearAssignee ? '' : input.toDepartment ?? String(asset.department ?? '');
   const nextLocation = input.toLocation ?? String(asset.location ?? '');
 
-  db.exec('BEGIN');
+  const changes = [{ field: 'status', before: asset.status, after: nextStatus },
+    { field: 'assignee', before: asset.assignee ?? '', after: nextAssignee },
+    { field: 'department', before: asset.department ?? '', after: nextDepartment },
+    { field: 'location', before: asset.location ?? '', after: nextLocation }].filter((c) => c.before !== c.after);
+  db.exec('SAVEPOINT asset_event');
   try {
     const result = db.prepare(`INSERT INTO asset_events
       (asset_id, asset_code, type, operator_name, from_status, to_status, from_assignee, to_assignee,
-       from_department, to_department, from_location, to_location, note, request_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+       from_department, to_department, from_location, to_location, note, request_id, flow_id, changes_json)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(...([asset.id as number, assetCode, input.type, input.operatorName ?? '', asset.status as string, nextStatus, asset.assignee ?? '', nextAssignee,
-        asset.department ?? '', nextDepartment, asset.location ?? '', nextLocation, input.note ?? '', requestId] as any[]));
+        asset.department ?? '', nextDepartment, asset.location ?? '', nextLocation, input.note ?? '', requestId, input.flowId ?? null, JSON.stringify(changes)] as any[]));
     db.prepare(`UPDATE assets SET status = ?, assignee = ?, department = ?, location = ?, updated_at_system = CURRENT_TIMESTAMP WHERE asset_code = ?`)
       .run(nextStatus, nextAssignee, nextDepartment, nextLocation, assetCode);
-    db.exec('COMMIT');
+    db.exec('RELEASE asset_event');
     return { status: 'created' as const, event: db.prepare('SELECT * FROM asset_events WHERE id = ?').get(result.lastInsertRowid), asset: getAsset(db, assetCode) };
   } catch (error) {
-    db.exec('ROLLBACK');
+    db.exec('ROLLBACK TO asset_event; RELEASE asset_event');
     throw error;
   }
 }

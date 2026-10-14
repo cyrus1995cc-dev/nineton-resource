@@ -1,5 +1,6 @@
 import type { Asset, AssetListResponse, AssetUpdateInput, AuthUser, ImportResponse, InventoryTask, InventoryTaskDetail, ManagedUser, Stats } from './types';
 import { createApiClient } from './apiClient';
+import type { Flow, FlowDetail, FlowInput } from '../../shared/flows';
 
 const authToken = () => typeof localStorage === 'undefined' ? '' : localStorage.getItem('asset_token') ?? '';
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
@@ -29,6 +30,12 @@ export const api = {
   }),
   logout: async () => { await request<void>('/api/auth/logout', { method: 'POST' }).catch(() => undefined); localStorage.removeItem('asset_token'); },
   getStats: () => request<Stats>('/api/stats'),
+  flowOptions: () => request<{ approvers: AuthUser[]; notification: { mode: string; message: string } }>('/api/flows/options'),
+  listFlows: (params: { scope: string; status: string; search: string; page: number }) => request<{ items: Flow[]; total: number; page: number; pageSize: number }>(`/api/flows?${new URLSearchParams(Object.entries(params).map(([k, v]) => [k, String(v)]))}`),
+  getFlow: (id: number) => request<FlowDetail>(`/api/flows/${id}`),
+  createFlow: (input: FlowInput) => request<FlowDetail>('/api/flows', { method: 'POST', body: JSON.stringify(input) }),
+  actFlow: (id: number, action: 'approve' | 'reject' | 'withdraw', comment: string) => request<FlowDetail>(`/api/flows/${id}/${action}`, { method: 'POST', body: JSON.stringify({ comment }) }),
+  commentFlow: (id: number, content: string) => request<FlowDetail>(`/api/flows/${id}/comments`, { method: 'POST', body: JSON.stringify({ content }) }),
   listAssets: (params: { search?: string; status?: string; category?: string; location?: string; page?: number; pageSize?: number }) => {
     const query = new URLSearchParams();
     for (const [key, value] of Object.entries(params)) if (value) query.set(key, String(value));
@@ -40,9 +47,6 @@ export const api = {
   }),
   saveQr: (assetCode: string, raw: string) => request<{ qr_raw: string; qr_format: string }>(`/api/assets/${encodeURIComponent(assetCode)}/qr`, {
     method: 'POST', body: JSON.stringify({ raw }),
-  }),
-  createEvent: (assetCode: string, input: Record<string, unknown>) => request<{ asset: Asset; event: unknown; replayed?: boolean }>(`/api/assets/${encodeURIComponent(assetCode)}/events`, {
-    method: 'POST', body: JSON.stringify(input),
   }),
   previewImport: async (file: File) => {
     const body = new FormData();

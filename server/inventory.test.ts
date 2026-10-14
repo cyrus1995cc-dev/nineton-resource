@@ -122,7 +122,7 @@ describe('inventory API', () => {
     const edited = await request(app).patch('/api/assets/INV-001').set('Authorization', authorization).send({ name: '新名称', operatorName: '冒用者' });
     expect(edited.body.event.operator_name).toBe(admin.user.display_name);
     const moved = await request(app).post('/api/assets/INV-001/events').set('Authorization', authorization).send({ type: '调拨', toLocation: '16楼', operatorName: '冒用者' });
-    expect(moved.body.event.operator_name).toBe(admin.user.display_name);
+    expect(moved.status).toBe(409);
     await request(app).post('/api/auth/users').set('Authorization', authorization).send({ username: 'readonly', password: 'readonly123', display_name: '访客', role: 'viewer' });
     const viewer = (await request(app).post('/api/auth/login').send({ username: 'readonly', password: 'readonly123' })).body;
     const readAuthorization = `Bearer ${viewer.token}`;

@@ -50,6 +50,9 @@ export type AssetEvent = {
   to_location: string;
   note: string;
   created_at: string;
+  flow_id?: number | null;
+  document_no?: string | null;
+  changes?: Array<{ field: string; before: string | number; after: string | number }>;
 };
 
 export type AssetListResponse = { items: Asset[]; total: number; page: number; pageSize: number };

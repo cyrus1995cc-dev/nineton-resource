@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { formatSystemTime } from '../dateTime';
-import { reactive, ref, watch } from 'vue';
-import type { Asset, AssetUpdateInput } from '../types';
+import { computed, nextTick, reactive, ref, watch } from 'vue';
+import { availableFlowTypes, flowTitles, type FlowType } from '../../../shared/flows';
+import type { Asset, AssetEvent, AssetUpdateInput } from '../types';
 
 const props = defineProps<{ asset: Asset | null; busy?: boolean; editBusy?: boolean; canWrite?: boolean }>();
 const emit = defineEmits<{
   close: [];
-  event: [payload: { type: string; toAssignee?: string; toDepartment?: string; note?: string }];
+  event: [payload: { type: FlowType }];
+  flow: [id: number];
   update: [payload: AssetUpdateInput];
 }>();
 
@@ -20,10 +22,19 @@ const tabs: Array<{ id: Tab; label: string }> = [
 ];
 const activeTab = ref<Tab>('basic');
 const editing = ref(false);
-const showClaim = ref(false);
-const assignee = ref('');
-const department = ref('');
-const note = ref('');
+const expanded = ref(true);
+const recordTab = ref('操作记录');
+const moreDialog = ref<HTMLDialogElement | null>(null);
+const showMore = ref(false);
+const actions = computed(() => props.asset ? availableFlowTypes(props.asset.status) : []);
+function eventChanges(event: AssetEvent) {
+  if (event.changes?.length) return event.changes;
+  return (['status', 'assignee', 'department', 'location'] as const).map((field) => ({ field, before: event[`from_${field}`] ?? '', after: event[`to_${field}`] ?? '' })).filter((c) => c.before !== c.after);
+}
+const fieldLabels: Record<string, string> = { status: '资产状态', name: '资产名称', category_level1: '一级分类', category_path: '资产分类', model: '型号', serial_number: '设备序列号', location: '所在位置', assignee: '使用人', department: '使用部门', company: '所属公司', cpu: 'CPU', memory: '内存', discrete_gpu: '独立显卡', gpu_model: '显卡型号', received_at: '领用日期', remark: '备注', photo_url: '照片', amount_taxed: '含税金额', amount_untaxed: '不含税金额', tax_amount: '税额' };
+const records = computed(() => (props.asset?.events ?? []).filter((event) => recordTab.value === '维修记录' ? event.type === '维修' : recordTab.value === '盘点记录' ? event.type === '盘点' : recordTab.value === '其他记录' ? ['编辑', '导入'].includes(event.type) : !['维修', '盘点', '编辑', '导入'].includes(event.type)));
+async function openMore() { showMore.value = true; await nextTick(); moreDialog.value?.showModal(); }
+function launch(type: FlowType) { moreDialog.value?.close(); showMore.value = false; emit('event', { type }); }
 
 function emptyForm(): AssetUpdateInput {
   return {
@@ -62,7 +73,7 @@ watch(() => props.asset, (asset) => {
   syncForm(asset);
   editing.value = false;
   activeTab.value = 'basic';
-  showClaim.value = false;
+  expanded.value = true; recordTab.value = '操作记录'; showMore.value = false;
 }, { immediate: true });
 
 function startEditing() {
@@ -82,11 +93,6 @@ function saveEditing() {
   emit('update', { ...form, operatorName: '当前管理员' });
 }
 
-function submitClaim() {
-  emit('event', { type: '领用', toAssignee: assignee.value, toDepartment: department.value, note: note.value });
-  showClaim.value = false;
-}
-
 function tabEvents() {
   if (!props.asset?.events) return [];
   if (activeTab.value === 'maintenance') return props.asset.events.filter((event) => event.type === '维修');
@@ -103,7 +109,7 @@ function tabEvents() {
         <div class="drawer-header-actions"><button v-if="canWrite !== false" class="secondary-button edit-trigger" @click="editing ? cancelEditing() : startEditing()">{{ editing ? '退出编辑' : '编辑资料' }}</button><button class="icon-button" aria-label="关闭" @click="emit('close')">×</button></div>
       </header>
 
-      <div class="drawer-status"><span class="status-pill" :class="`status-${asset.status}`">{{ asset.status }}</span><span>{{ asset.name || '未命名资产' }}</span><span class="readonly-hint">资产编码只读</span></div>
+      <div v-if="editing" class="drawer-status"><span class="status-pill" :class="`status-${asset.status}`">{{ asset.status }}</span><span>{{ asset.name || '未命名资产' }}</span><span class="readonly-hint">资产编码只读</span></div>
 
       <div v-if="editing" class="editor-layout">
         <nav class="editor-tabs" aria-label="资产信息页签">
@@ -130,12 +136,13 @@ function tabEvents() {
             <div class="section-title"><div><span class="eyebrow">资产归属</span><h3>使用信息</h3></div></div>
             <div class="form-grid">
               <label class="field"><span>所属公司</span><input v-model="form.company" /></label>
-              <label class="field"><span>所在位置</span><input v-model="form.location" placeholder="如：12楼" /></label>
-              <label class="field"><span>使用人</span><input v-model="form.assignee" /></label>
-              <label class="field"><span>使用部门</span><input v-model="form.department" /></label>
+              <label class="field"><span>所在位置</span><input v-model="form.location" disabled /></label>
+              <label class="field"><span>使用人</span><input v-model="form.assignee" disabled /></label>
+              <label class="field"><span>使用部门</span><input v-model="form.department" disabled /></label>
               <label class="field"><span>领用日期</span><input v-model="form.received_at" placeholder="YYYY-MM-DD" /></label>
               <label class="field readonly-field"><span>当前状态</span><input :value="asset.status" disabled /></label>
             </div>
+            <p class="flow-state-message">使用人、部门和位置通过交接或调拨申请变更，审批通过后生效。</p>
           </div>
 
           <div v-else-if="activeTab === 'events' || activeTab === 'maintenance' || activeTab === 'inventory'" class="form-section history-section">
@@ -159,21 +166,20 @@ function tabEvents() {
       </div>
 
       <template v-else>
-        <div class="detail-grid">
-          <div><label>资产分类</label><strong>{{ asset.category_path || '—' }}</strong></div><div><label>所在位置</label><strong>{{ asset.location || '—' }}</strong></div>
-          <div><label>使用人</label><strong>{{ asset.assignee || '—' }}</strong></div><div><label>使用部门</label><strong>{{ asset.department || '—' }}</strong></div>
-          <div><label>所属公司</label><strong>{{ asset.company || '—' }}</strong></div><div><label>型号</label><strong>{{ asset.model || '—' }}</strong></div>
-          <div><label>序列号</label><strong>{{ asset.serial_number || '—' }}</strong></div><div><label>含税金额</label><strong>{{ Number(asset.amount_taxed || 0).toLocaleString('zh-CN', { style: 'currency', currency: 'CNY' }) }}</strong></div>
-        </div>
-        <div class="qr-raw"><label>二维码原文</label><code>{{ asset.qr_raw || '暂未记录' }}</code></div>
-        <div class="drawer-actions">
-          <button v-if="canWrite !== false && asset.status === '空闲'" class="primary-button" @click="showClaim = true">领用资产</button>
-          <button v-if="canWrite !== false && (asset.status === '在用' || asset.status === '借出')" class="secondary-button" :disabled="busy" @click="emit('event', { type: asset.status === '借出' ? '借出归还' : '归还' })">归还资产</button>
-        </div>
-        <div class="timeline"><div class="section-title"><h3>流转记录</h3><span>{{ asset.events?.length ?? 0 }} 条</span></div><div v-if="!asset.events?.length" class="muted">暂无流转记录</div><div v-for="event in asset.events" :key="event.id" class="timeline-item"><span class="timeline-dot"></span><div><strong>{{ event.type }}</strong><span>{{ event.operator_name || '系统' }} · {{ formatSystemTime(event.created_at) }}</span><small v-if="event.note">{{ event.note }}</small></div></div></div>
+        <article class="scan-info-card"><header><h3>{{ asset.name || '未命名资产' }}</h3><span class="status-pill" :class="`status-${asset.status}`">{{ asset.status }}</span></header>
+          <dl class="scan-info-fields"><div><dt>资产编码</dt><dd>{{ asset.asset_code }}</dd></div><template v-if="expanded"><div><dt>资产分类</dt><dd>{{ asset.category_path || '—' }}</dd></div><div><dt>型号</dt><dd>{{ asset.model || '—' }}</dd></div><div><dt>设备序列号</dt><dd>{{ asset.serial_number || '—' }}</dd></div><div><dt>所在位置</dt><dd>{{ asset.location || '—' }}</dd></div><div><dt>使用部门</dt><dd>{{ asset.department || '—' }}</dd></div><div><dt>使用人</dt><dd>{{ asset.assignee || '—' }}</dd></div><div><dt>所属公司</dt><dd>{{ asset.company || '—' }}</dd></div></template></dl>
+          <button class="text-button scan-expand" :aria-expanded="expanded" @click="expanded = !expanded">{{ expanded ? '收起 ∧' : '展开基本信息 ∨' }}</button>
+        </article>
+        <details class="scan-extra"><summary>更多资料与二维码</summary><dl class="scan-info-fields"><div><dt>含税金额</dt><dd>{{ Number(asset.amount_taxed || 0).toLocaleString('zh-CN', { style: 'currency', currency: 'CNY' }) }}</dd></div><div><dt>CPU / 内存</dt><dd>{{ asset.cpu || '—' }} / {{ asset.memory || '—' }}</dd></div><div><dt>领用日期</dt><dd>{{ asset.received_at || '—' }}</dd></div><div><dt>备注</dt><dd>{{ asset.remark || '—' }}</dd></div></dl><div class="qr-raw"><label>二维码原文</label><code>{{ asset.qr_raw || '暂未记录' }}</code></div></details>
+        <article class="scan-history-card"><nav class="scan-record-tabs" aria-label="资产记录分类"><button v-for="label in ['操作记录', '维修记录', '盘点记录', '其他记录']" :key="label" :class="{ active: recordTab === label }" @click="recordTab = label">{{ label }}</button></nav>
+          <p v-if="!records.length" class="empty-history">暂无{{ recordTab }}</p><section v-for="(event, index) in records" :key="event.id" class="scan-record"><span class="scan-record-number">第 {{ records.length - index }} 条</span><dl><div><dt>操作人</dt><dd>{{ event.operator_name || '系统' }}</dd></div><div><dt>操作类型</dt><dd>{{ event.type }}</dd></div><div><dt>操作时间</dt><dd>{{ formatSystemTime(event.created_at) }}</dd></div><div v-if="event.flow_id && event.document_no"><dt>关联单据</dt><dd><button class="text-button" @click="emit('flow', event.flow_id)">{{ event.document_no }} →</button></dd></div></dl>
+            <div class="scan-changes"><p v-for="change in eventChanges(event)" :key="change.field">{{ fieldLabels[change.field] || change.field }}由“{{ change.before === '' ? '空' : change.before }}”变更为“{{ change.after === '' ? '空' : change.after }}”</p><p v-if="event.note" class="preserve-lines">{{ event.note }}</p></div>
+          </section>
+        </article>
+        <footer v-if="canWrite && actions.length" class="scan-bottom-actions"><button v-if="actions.includes('维修')" @click="launch('维修')"><span class="scan-action-symbol purple"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 6a5 5 0 0 0-6 6L3 17l4 4 5-5a5 5 0 0 0 6-6l-3 3-4-4 3-3Z" /></svg></span>故障报修</button><button v-if="actions.includes('交接')" @click="launch('交接')"><span class="scan-action-symbol orange"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h15m-4-4 4 4-4 4M20 17H5m4-4-4 4 4 4" /></svg></span>交接他人</button><button v-if="actions.includes('报失')" @click="launch('报失')"><span class="scan-action-symbol blue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="10" cy="10" r="6" /><path d="m14 14 6 6M10 7v4m0 2v1" /></svg></span>资产报失</button><button @click="openMore"><span class="scan-action-symbol gray"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg></span>更多</button></footer>
+        <p v-else-if="!canWrite" class="scan-readonly">当前账号为只读，可查看资产信息和记录。</p>
       </template>
-
-      <div v-if="showClaim" class="claim-form"><h3>确认领用</h3><input v-model="assignee" placeholder="使用人" /><input v-model="department" placeholder="使用部门" /><textarea v-model="note" placeholder="备注"></textarea><div class="form-actions"><button class="secondary-button" @click="showClaim = false">取消</button><button class="primary-button" @click="submitClaim">确认领用</button></div></div>
+      <dialog v-if="showMore" ref="moreDialog" class="scan-more-dialog" aria-labelledby="scan-more-title" @cancel="showMore = false"><h3 id="scan-more-title">资产操作</h3><p class="muted">以下操作提交审批后生效。</p><div class="scan-more-grid"><button v-for="type in actions" :key="type" class="secondary-button" @click="launch(type)">{{ flowTitles[type] }}</button><button v-if="canWrite" class="secondary-button" @click="moreDialog?.close(); showMore = false; startEditing()">编辑资料</button></div><button class="secondary-button scan-more-cancel" @click="moreDialog?.close(); showMore = false">取消</button></dialog>
     </section>
   </div>
 </template>

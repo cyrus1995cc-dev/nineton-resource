@@ -10,6 +10,12 @@ export function createAssetRouter(db: DatabaseSync) {
     location: String(req.query.location ?? ''), page: Number(req.query.page ?? 1), pageSize: Number(req.query.pageSize ?? 20),
   })));
   router.patch('/:assetCode', requireRole('admin', 'asset_manager'), (req, res) => {
+    if (req.user) {
+      const asset = getAsset(db, String(req.params.assetCode)) as Record<string, unknown> | null;
+      if (asset && ['assignee', 'department', 'location'].some((field) => req.body?.[field] !== undefined && String(req.body[field]) !== String(asset[field] ?? ''))) {
+        return res.status(409).json({ message: '使用人、部门和位置的变更请提交交接或调拨审批申请' });
+      }
+    }
     const result = updateAsset(db, String(req.params.assetCode), { ...req.body, operatorName: req.user?.display_name ?? req.body?.operatorName } as AssetUpdateInput);
     if (result.status === 'not_found') return res.status(404).json({ message: '资产不存在' });
     if (result.status === 'empty') return res.status(400).json({ message: '没有需要保存的资产资料' });

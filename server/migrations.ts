@@ -132,7 +132,58 @@ export function migrate(db: DatabaseSync) {
       FOREIGN KEY (asset_id) REFERENCES assets(id) ON DELETE CASCADE
     );
     CREATE INDEX IF NOT EXISTS idx_inventory_records_task ON inventory_records(task_id, result);
+    CREATE TABLE IF NOT EXISTS asset_flows (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      document_no TEXT NOT NULL UNIQUE,
+      type TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'completed', 'rejected', 'withdrawn')),
+      applicant_id INTEGER NOT NULL REFERENCES users(id),
+      applicant_name TEXT NOT NULL,
+      applicant_department TEXT NOT NULL,
+      to_assignee TEXT NOT NULL DEFAULT '', to_department TEXT NOT NULL DEFAULT '', to_location TEXT NOT NULL DEFAULT '',
+      note TEXT NOT NULL DEFAULT '', current_step INTEGER NOT NULL DEFAULT 1,
+      request_id TEXT NOT NULL UNIQUE, request_hash TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, completed_at TEXT
+    );
+    CREATE TABLE IF NOT EXISTS asset_flow_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, flow_id INTEGER NOT NULL REFERENCES asset_flows(id),
+      asset_id INTEGER NOT NULL REFERENCES assets(id), asset_code TEXT NOT NULL, asset_name TEXT NOT NULL,
+      category_path TEXT NOT NULL, model TEXT NOT NULL,
+      expected_status TEXT NOT NULL, expected_location TEXT NOT NULL, expected_assignee TEXT NOT NULL, expected_department TEXT NOT NULL,
+      UNIQUE(flow_id, asset_id)
+    );
+    CREATE TABLE IF NOT EXISTS asset_flow_steps (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, flow_id INTEGER NOT NULL REFERENCES asset_flows(id),
+      sequence INTEGER NOT NULL, approver_id INTEGER NOT NULL REFERENCES users(id), approver_name TEXT NOT NULL,
+      status TEXT NOT NULL CHECK (status IN ('waiting', 'pending', 'approved', 'rejected', 'cancelled')),
+      comment TEXT NOT NULL DEFAULT '', acted_at TEXT, UNIQUE(flow_id, sequence)
+    );
+    CREATE TABLE IF NOT EXISTS asset_flow_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, flow_id INTEGER NOT NULL REFERENCES asset_flows(id),
+      action TEXT NOT NULL, actor_id INTEGER NOT NULL REFERENCES users(id), actor_name TEXT NOT NULL,
+      note TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS asset_flow_comments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, flow_id INTEGER NOT NULL REFERENCES asset_flows(id),
+      user_id INTEGER NOT NULL REFERENCES users(id), user_name TEXT NOT NULL, content TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS notification_outbox (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, flow_id INTEGER NOT NULL REFERENCES asset_flows(id),
+      kind TEXT NOT NULL, recipient_id INTEGER NOT NULL REFERENCES users(id), recipient_name TEXT NOT NULL,
+      dedupe_key TEXT NOT NULL UNIQUE, payload_json TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'sent', 'failed', 'cancelled')),
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, sent_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_flows_status ON asset_flows(status, id DESC);
+    CREATE INDEX IF NOT EXISTS idx_flow_items_asset ON asset_flow_items(asset_id, flow_id);
+    CREATE INDEX IF NOT EXISTS idx_flow_steps_approver ON asset_flow_steps(approver_id, status);
+    CREATE INDEX IF NOT EXISTS idx_outbox_status ON notification_outbox(status, id);
   `);
   try { db.exec('ALTER TABLE users ADD COLUMN dingtalk_user_id TEXT'); } catch { /* existing databases already have this column */ }
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_dingtalk ON users(dingtalk_user_id) WHERE dingtalk_user_id IS NOT NULL');
+  // Historical events have no original approval documents. Keep them as ordinary history.
+  const eventColumns = db.prepare('PRAGMA table_info(asset_events)').all() as Array<{ name: string }>;
+  if (!eventColumns.some((column) => column.name === 'flow_id')) db.exec('ALTER TABLE asset_events ADD COLUMN flow_id INTEGER REFERENCES asset_flows(id)');
+  if (!eventColumns.some((column) => column.name === 'changes_json')) db.exec("ALTER TABLE asset_events ADD COLUMN changes_json TEXT NOT NULL DEFAULT '[]'");
 }

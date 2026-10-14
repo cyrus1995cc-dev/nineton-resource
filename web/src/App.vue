@@ -8,7 +8,8 @@ import SidebarNav from './components/SidebarNav.vue';
 import MetricCard from './components/MetricCard.vue';
 import AssetTable from './components/AssetTable.vue';
 import AssetDetailDrawer from './components/AssetDetailDrawer.vue';
-import AssetEventPanel from './components/AssetEventPanel.vue';
+import FlowPanel from './components/FlowPanel.vue';
+import type { FlowType } from '../../shared/flows';
 import QrLookup from './components/QrLookup.vue';
 import LoginView from './components/LoginView.vue';
 import UserSettingsPanel from './components/UserSettingsPanel.vue';
@@ -24,14 +25,14 @@ const search = ref('');
 const statusFilter = ref('');
 const locationFilter = ref('');
 const selected = ref<Asset | null>(null);
-const flowAsset = ref<Asset | null>(null);
+const flowDraft = ref<{ asset: Asset; type: FlowType; nonce: number } | null>(null);
+const flowId = ref<number | null>(Number(new URLSearchParams(window.location.search).get('flow')) || null);
 const loading = ref(false);
 const error = ref('');
 const importInput = ref<HTMLInputElement | null>(null);
 const importPreview = ref<ImportResponse | null>(null);
 const importDialog = ref<HTMLDialogElement | null>(null);
 const importBusy = ref(false);
-const eventBusy = ref(false);
 const editBusy = ref(false);
 const toast = ref('');
 const currentUser = ref<AuthUser | null>(null);
@@ -75,13 +76,14 @@ async function loadUsers() {
 }
 async function bootstrapAuth() {
   authReady.value = false; authFailure.value = '';
-  try { if (localStorage.getItem('asset_token')) { currentUser.value = await api.me(); await refresh(); } }
+  try { if (localStorage.getItem('asset_token')) { currentUser.value = await api.me(); await refresh(); if (flowId.value) activeView.value = 'events'; } }
   catch (err) { if (!(err instanceof ApiError && err.status === 401)) authFailure.value = err instanceof Error ? err.message : '登录状态检查失败'; }
   finally { authReady.value = true; }
 }
-async function onLoggedIn(user: AuthUser) { currentUser.value = user; await refresh(); }
+async function onLoggedIn(user: AuthUser) { currentUser.value = user; await refresh(); if (flowId.value) activeView.value = 'events'; }
 function resetSession() {
-  listRequest++; currentUser.value = null; selected.value = null; flowAsset.value = null;
+  listRequest++; currentUser.value = null; selected.value = null; flowDraft.value = null;
+  flowId.value = Number(new URLSearchParams(window.location.search).get('flow')) || null;
   assets.value = []; total.value = 0; stats.value = { total: 0, status: {}, categories: [], locations: [], companies: [], amounts: { taxed: 0, untaxed: 0, tax: 0 } };
   activeView.value = 'dashboard'; search.value = ''; statusFilter.value = ''; locationFilter.value = ''; page.value = 1;
   importPreview.value = null; users.value = []; error.value = ''; toast.value = ''; authFailure.value = '';
@@ -106,30 +108,12 @@ async function lookupAsset(payload: { raw: string; assetCode: string }) {
     }
   } catch (err) { error.value = err instanceof Error ? err.message : '资产查询失败'; }
 }
-async function submitEvent(payload: Record<string, unknown>) {
+function startFlow(payload: { type: FlowType }) {
   if (!selected.value) return;
-  eventBusy.value = true;
-  try {
-    const result = await api.createEvent(selected.value.asset_code, { ...payload, requestId: crypto.randomUUID() });
-    selected.value = result.asset; showToast(result.replayed ? '操作已处理' : '资产操作成功'); await refresh();
-  } catch (err) { error.value = err instanceof Error ? err.message : '资产操作失败'; }
-  finally { eventBusy.value = false; }
+  flowDraft.value = { asset: selected.value, type: payload.type, nonce: Date.now() };
+  selected.value = null; flowId.value = null; activeView.value = 'events';
 }
-async function selectFlowAsset(asset: Asset) {
-  try { flowAsset.value = await api.getAsset(asset.asset_code); }
-  catch (err) { error.value = err instanceof Error ? err.message : '资产详情加载失败'; }
-}
-async function submitFlowEvent(payload: Record<string, unknown>) {
-  if (!flowAsset.value) return;
-  eventBusy.value = true;
-  try {
-    const result = await api.createEvent(flowAsset.value.asset_code, { ...payload, requestId: crypto.randomUUID() });
-    flowAsset.value = result.asset;
-    showToast(result.replayed ? '操作已处理' : '资产操作成功');
-    await refresh();
-  } catch (err) { error.value = err instanceof Error ? err.message : '资产操作失败'; }
-  finally { eventBusy.value = false; }
-}
+function openFlow(id: number) { flowDraft.value = null; selected.value = null; flowId.value = id; activeView.value = 'events'; }
 async function updateAsset(payload: Record<string, unknown>) {
   if (!selected.value) return;
   editBusy.value = true;
@@ -154,7 +138,14 @@ async function confirmImport() {
   catch (err) { error.value = err instanceof Error ? err.message : '导入失败'; }
   finally { importBusy.value = false; }
 }
-function navigate(view: string) { activeView.value = view; if (view === 'events') { selected.value = null; flowAsset.value = null; } if (view === 'assets') { flowAsset.value = null; } if (view === 'settings') void loadUsers(); if (view === 'assets' || view === 'events') void loadAssets(); }
+function navigate(view: string) {
+  activeView.value = view;
+  const url = new URL(window.location.href); url.searchParams.delete('flow'); window.history.replaceState(null, '', url);
+  flowId.value = null; flowDraft.value = null;
+  if (view === 'events') selected.value = null;
+  if (view === 'settings') void loadUsers();
+  if (view === 'assets') void loadAssets();
+}
 function applyFilters() { page.value = 1; void loadAssets(); }
 onMounted(() => { window.addEventListener(SESSION_EXPIRED_EVENT, resetSession); void bootstrapAuth(); });
 onBeforeUnmount(() => { window.removeEventListener(SESSION_EXPIRED_EVENT, resetSession); if (toastTimer) clearTimeout(toastTimer); });
@@ -167,7 +158,7 @@ onBeforeUnmount(() => { window.removeEventListener(SESSION_EXPIRED_EVENT, resetS
     <SidebarNav :active="activeView" @navigate="navigate" />
     <main class="main-shell">
       <header class="topbar"><div class="tenant"><span class="tenant-badge">资产管理</span><strong>重庆市九吨科技有限公司</strong><span class="chevron">⌄</span></div><div class="top-actions"><span>{{ currentUser?.display_name }} · {{ currentUser?.role === 'viewer' ? '只读' : '可操作' }}</span><button class="avatar" :title="'退出登录'" @click="logout">{{ currentUser?.display_name?.slice(0, 1) }}</button></div></header>
-      <div class="page-heading"><div><span class="eyebrow">资产管理平台</span><h1>{{ activeTitle }}</h1></div><div class="heading-actions"><input ref="importInput" type="file" accept=".xlsx,.xls" class="hidden-input" @change="onImportFile" /><button v-if="canWrite" class="secondary-button" :disabled="importBusy" @click="importInput?.click()">{{ importBusy ? '处理中…' : '导入 Excel' }}</button><button class="primary-button" @click="activeView = 'scan'">扫码查询</button></div></div>
+      <div class="page-heading"><div><span class="eyebrow">资产管理平台</span><h1>{{ activeTitle }}</h1></div><div class="heading-actions"><input ref="importInput" type="file" accept=".xlsx,.xls" class="hidden-input" @change="onImportFile" /><button v-if="canWrite" class="secondary-button" :disabled="importBusy" @click="importInput?.click()">{{ importBusy ? '处理中…' : '导入 Excel' }}</button><button class="primary-button" @click="navigate('scan')">扫码查询</button></div></div>
       <div v-if="error" class="error-banner" role="alert">{{ error }} <button aria-label="关闭提示" @click="error = ''">×</button></div><div v-if="toast" class="toast" role="status">{{ toast }}</div>
 
       <section v-if="activeView === 'dashboard'" class="content-area">
@@ -178,14 +169,14 @@ onBeforeUnmount(() => { window.removeEventListener(SESSION_EXPIRED_EVENT, resetS
 
       <section v-else-if="activeView === 'assets'" class="content-area"><div class="panel list-panel"><div class="filter-row"><div class="search-box"><span>⌕</span><input v-model="search" placeholder="搜索资产编码、名称、型号或序列号" @keyup.enter="applyFilters" /><button @click="applyFilters">搜索</button></div><select v-model="statusFilter" @change="applyFilters"><option value="">全部状态</option><option value="在用">在用</option><option value="空闲">空闲</option><option value="借出">借出</option><option value="维修">维修</option></select><select v-model="locationFilter" @change="applyFilters"><option value="">全部位置</option><option v-for="item in stats.locations" :key="item.name" :value="item.name">{{ item.name }}</option></select><button class="secondary-button" @click="refresh">刷新</button></div><div class="list-summary"><span>资产清单</span><strong>{{ total }}</strong><span>项</span></div><AssetTable :items="assets" :total="total" :page="page" :page-size="pageSize" :loading="loading" @select="selectAsset" @page="(next) => { page = next; loadAssets(); }" /></div></section>
 
-      <section v-else-if="activeView === 'events'" class="content-area"><div class="flow-grid"><div class="panel list-panel"><div class="filter-row"><div class="search-box"><span>⌕</span><input v-model="search" placeholder="搜索要操作的资产" @keyup.enter="applyFilters" /><button @click="applyFilters">搜索</button></div><select v-model="statusFilter" @change="applyFilters"><option value="">全部状态</option><option value="在用">在用</option><option value="空闲">空闲</option><option value="借出">借出</option><option value="维修">维修</option></select><button class="secondary-button" @click="refresh">刷新</button></div><div class="list-summary"><span>可操作资产</span><strong>{{ total }}</strong><span>项</span></div><AssetTable :items="assets" :total="total" :page="page" :page-size="pageSize" :loading="loading" @select="selectFlowAsset" @page="(next) => { page = next; loadAssets(); }" /></div><AssetEventPanel :asset="flowAsset" :busy="eventBusy" :can-write="canWrite" @submit="submitFlowEvent" /></div></section>
+      <section v-else-if="activeView === 'events'" class="content-area"><FlowPanel :user="currentUser" :can-write="canWrite" :draft="flowDraft" :initial-id="flowId" @changed="refresh" @success="showToast" @settings="navigate('settings')" /></section>
 
       <section v-else-if="activeView === 'scan'" class="content-area scan-view"><QrLookup @lookup="lookupAsset" /></section>
       <section v-else-if="activeView === 'inventory'" class="content-area"><InventoryPanel :locations="stats.locations" :can-write="canWrite" @error="(message) => { error = message; }" @success="showToast" /></section>
       <section v-else-if="activeView === 'settings'" class="content-area"><UserSettingsPanel :users="users" :can-write="canManageUsers" :busy="userBusy" :created="userCreated" @create="createUser" /></section>
       <section v-else class="content-area"><div class="panel placeholder-panel"><span class="eyebrow">{{ activeTitle }}</span><h2>这个模块将在下一阶段接入</h2><p>一期核心功能已经包含资产台账、二维码解析、Excel 导入、看板统计和流转记录。</p></div></section>
     </main>
-    <AssetDetailDrawer :asset="selected" :busy="eventBusy" :edit-busy="editBusy" :can-write="canWrite" @close="selected = null" @event="submitEvent" @update="updateAsset" />
+    <AssetDetailDrawer :asset="selected" :edit-busy="editBusy" :can-write="canWrite" @close="selected = null" @event="startFlow" @flow="openFlow" @update="updateAsset" />
     <dialog v-if="importPreview" ref="importDialog" class="import-modal" aria-labelledby="import-title" @cancel="cancelImport"><span class="eyebrow">导入预览</span><h2 id="import-title">{{ importPreview.fileName }}</h2><p>确认后将按资产编码更新台账；空值会保留已有信息，明确填写的 0 会更新金额。异常行将跳过。</p><div class="import-stats"><div><strong>{{ importPreview.preview.newRows }}</strong><span>新增</span></div><div><strong>{{ importPreview.preview.updatedRows }}</strong><span>更新</span></div><div><strong>{{ importPreview.preview.unchangedRows }}</strong><span>无变化</span></div><div class="danger"><strong>{{ importPreview.preview.invalidRows }}</strong><span>异常</span></div></div><p v-if="error" class="scan-error" role="alert">{{ error }}</p><div v-if="importPreview.errors?.length" class="import-errors"><strong>异常行（将跳过）</strong><p v-for="(item, index) in importPreview.errors" :key="index">第 {{ item.row }} 行 · {{ item.assetCode || '无资产编码' }}：{{ item.reason }}</p></div><div class="form-actions"><button class="secondary-button" :disabled="importBusy" autofocus @click="importPreview = null">取消</button><button class="primary-button" :disabled="importBusy || !(importPreview.preview.newRows + importPreview.preview.updatedRows + importPreview.preview.unchangedRows)" @click="confirmImport">{{ importBusy ? '导入中…' : '确认导入' }}</button></div></dialog>
   </div>
 </template>
