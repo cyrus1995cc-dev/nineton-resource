@@ -54,6 +54,13 @@ describe('asset API', () => {
     expect(response.body.asset.events[0].type).toBe('编辑');
   });
 
+  it('preserves an existing QR URL when a manual asset code is submitted', async () => {
+    const { app } = seededApp();
+    const response = await request(app).post('/api/assets/CSJ-0431/qr').send({ raw: 'CSJ-0431' });
+    expect(response.body.qr_raw).toBe('https://d.gongbeiyun.com/a/58b7d/57771/CSJ-0431');
+    expect((await request(app).get('/api/assets/CSJ-0431')).body.qr_format).toBe('gongbeiyun_url');
+  });
+
   it('records an idempotent claim and return event', async () => {
     const { app } = seededApp();
     const claim = await request(app).post('/api/assets/CSJ-0431/events').send({

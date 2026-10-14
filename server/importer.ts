@@ -21,9 +21,9 @@ export type ImportRow = {
   assignee: string;
   department: string;
   received_at: string;
-  amount_taxed: number;
-  amount_untaxed: number;
-  tax_amount: number;
+  amount_taxed: number | null;
+  amount_untaxed: number | null;
+  tax_amount: number | null;
 };
 
 export type ImportPreview = {
@@ -77,20 +77,22 @@ function text(value: unknown): string {
   return value === null || value === undefined ? '' : String(value).trim();
 }
 
-function amount(value: unknown): number {
-  if (value === null || value === undefined || value === '') return 0;
+function amount(value: unknown): number | null {
+  if (value === null || value === undefined || String(value).trim() === '') return null;
   const parsed = Number(String(value).replace(/[,￥¥\s]/g, ''));
-  return Number.isFinite(parsed) ? parsed : 0;
+  if (!Number.isFinite(parsed) || parsed < 0) throw new Error(`金额格式无效：${value}`);
+  return parsed;
 }
 
 export function parseWorkbook(buffer: Buffer): ImportRow[] {
   const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
   const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' });
-  return rawRows.map((source) => {
+  return rawRows.map((source, index) => {
     const row = {} as ImportRow;
     for (const [header, field] of Object.entries(fieldMap)) {
-      row[field] = (textFields.has(field) ? text(source[header]) : amount(source[header])) as never;
+      try { row[field] = (textFields.has(field) ? text(source[header]) : amount(source[header])) as never; }
+      catch { throw new Error(`Excel 第 ${index + 2} 行「${header}」金额格式无效，请填写非负数字或留空`); }
     }
     return row;
   });
@@ -152,7 +154,7 @@ export function applyImport(db: DatabaseSync, rows: ImportRow[], batchId: string
       const existing = db.prepare('SELECT id FROM assets WHERE asset_code = ?').get(row.asset_code) as { id: number } | undefined;
       if (!existing) {
         const columns = ['asset_code', ...dbFields, 'source_updated_at'];
-        const values = [row.asset_code, ...dbFields.map((field) => row[field]), now];
+        const values = [row.asset_code, ...dbFields.map((field) => row[field] ?? 0), now];
         const placeholders = columns.map(() => '?').join(', ');
         db.prepare(`INSERT INTO assets (${columns.join(', ')}) VALUES (${placeholders})`).run(...(values as any[]));
       } else {

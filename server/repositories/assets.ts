@@ -84,6 +84,12 @@ export function getAsset(db: DatabaseSync, assetCode: string) {
 export function saveAssetQr(db: DatabaseSync, assetCode: string, raw: string) {
   const parsed = parseQr(raw);
   if (!parsed.assetCode || parsed.assetCode !== assetCode) return { status: 'invalid' as const };
+  const existing = db.prepare('SELECT qr_raw, qr_format FROM assets WHERE asset_code = ?').get(assetCode) as { qr_raw: string | null; qr_format: string | null } | undefined;
+  if (!existing) return { status: 'not_found' as const };
+  // A manual code lookup must never replace the string printed on an existing label.
+  if (parsed.format === 'asset_code' && existing.qr_raw && parseQr(existing.qr_raw).format !== 'asset_code') {
+    return { status: 'saved' as const, qr_raw: existing.qr_raw, qr_format: existing.qr_format };
+  }
   const result = db.prepare('UPDATE assets SET qr_raw = ?, qr_format = ?, updated_at_system = CURRENT_TIMESTAMP WHERE asset_code = ?')
     .run(parsed.raw, parsed.format, assetCode);
   if (!result.changes) return { status: 'not_found' as const };

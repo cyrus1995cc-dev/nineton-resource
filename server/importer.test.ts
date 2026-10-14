@@ -73,4 +73,16 @@ describe('asset workbook importer', () => {
     const stored = db.prepare("SELECT name, remark FROM assets WHERE asset_code = 'CSJ-0431'").get() as { name: string; remark: string };
     expect(stored).toEqual({ name: '新名称', remark: '保留' });
   });
+  it('preserves existing amounts for blank cells but accepts an explicit zero', () => {
+    const db = openDatabase(':memory:');
+    db.prepare("INSERT INTO assets (asset_code, name, amount_taxed) VALUES ('IMP-001', '电脑', 2999)").run();
+    const blank = parseWorkbook(workbookBuffer([row('IMP-001', { '购置/租赁金额（含税）': '' })]));
+    applyImport(db, blank, 'blank');
+    expect(db.prepare("SELECT amount_taxed FROM assets WHERE asset_code = 'IMP-001'").get()?.amount_taxed).toBe(2999);
+    const zero = parseWorkbook(workbookBuffer([row('IMP-001', { '购置/租赁金额（含税）': 0 })]));
+    applyImport(db, zero, 'zero');
+    expect(db.prepare("SELECT amount_taxed FROM assets WHERE asset_code = 'IMP-001'").get()?.amount_taxed).toBe(0);
+    expect(() => parseWorkbook(workbookBuffer([row('IMP-001', { '购置/租赁金额（含税）': '无效值' })]))).toThrow('第 2 行');
+    db.close();
+  });
 });

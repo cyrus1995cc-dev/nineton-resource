@@ -41,13 +41,24 @@ function recordsForTask(db: DatabaseSync, taskId: number) {
 
 function refreshTaskCounts(db: DatabaseSync, taskId: number) {
   db.prepare(`UPDATE inventory_tasks SET
-    checked_count = (SELECT COUNT(*) FROM inventory_records WHERE task_id = ? AND result <> 'pending'),
+    checked_count = (SELECT COUNT(*) FROM inventory_records WHERE task_id = ? AND result IN ('found', 'different')),
     difference_count = (SELECT COUNT(*) FROM inventory_records WHERE task_id = ? AND result IN ('different', 'missing'))
     WHERE id = ?`).run(taskId, taskId, taskId);
 }
 
 export function listInventoryTasks(db: DatabaseSync) {
   return (db.prepare('SELECT * FROM inventory_tasks ORDER BY id DESC').all() as Array<Record<string, unknown>>).map(taskRow);
+}
+
+function auditInventory(db: DatabaseSync, task: Record<string, unknown>, record: Record<string, unknown>, result: string, actualLocation: string, note: string, operatorName: string) {
+  // Inventory observes the asset; a location discrepancy is resolved separately by editing or transfer.
+  const label = result === 'missing' ? '未盘到' : result === 'different' ? '位置差异' : '正常';
+  const description = `盘点任务 #${task.id}「${task.name}」：${label}；应在 ${record.expected_location || '未设置'}${result === 'missing' ? '' : `；实盘位置 ${actualLocation || '未设置'}`}${note ? `；备注：${note}` : ''}`;
+  db.prepare(`INSERT INTO asset_events
+    (asset_id, asset_code, type, operator_name, from_status, to_status, from_assignee, to_assignee,
+     from_department, to_department, from_location, to_location, note)
+    SELECT id, asset_code, '盘点', ?, status, status, assignee, assignee, department, department, location, location, ?
+    FROM assets WHERE id = ?`).run(operatorName, description, Number(record.asset_id));
 }
 
 export function getInventoryTask(db: DatabaseSync, taskId: number) {
@@ -94,20 +105,36 @@ export function recordInventoryScan(db: DatabaseSync, taskId: number, input: Inv
   const record = db.prepare('SELECT * FROM inventory_records WHERE task_id = ? AND asset_code = ?').get(taskId, assetCode) as Record<string, unknown> | undefined;
   if (!record) return { status: 'out_of_scope' as const };
   const actualLocation = String(input.actualLocation ?? record.expected_location ?? '').trim();
-  const result = actualLocation && actualLocation !== String(record.expected_location ?? '') ? 'different' : 'found';
-  db.prepare(`UPDATE inventory_records SET result = ?, actual_location = ?, note = ?, operator_name = ?, checked_at = CURRENT_TIMESTAMP WHERE id = ?`)
-    .run(...([result, actualLocation, input.note ?? '', input.operatorName ?? '', record.id] as any[]));
-  refreshTaskCounts(db, taskId);
-  return { status: 'recorded' as const, record: recordRow(db.prepare('SELECT * FROM inventory_records WHERE id = ?').get(record.id as number) as Record<string, unknown>), ...getInventoryTask(db, taskId)! };
+  const result = actualLocation !== String(record.expected_location ?? '') ? 'different' : 'found';
+  const note = String(input.note ?? '').trim();
+  const operatorName = String(input.operatorName ?? '').trim();
+  if (record.result === result && record.actual_location === actualLocation && (record.note ?? '') === note) {
+    return { status: 'recorded' as const, replayed: true, record: recordRow(record), ...getInventoryTask(db, taskId)! };
+  }
+  db.exec('BEGIN');
+  try {
+    db.prepare(`UPDATE inventory_records SET result = ?, actual_location = ?, note = ?, operator_name = ?, checked_at = CURRENT_TIMESTAMP WHERE id = ?`)
+      .run(result, actualLocation, note, operatorName, Number(record.id));
+    auditInventory(db, task, record, result, actualLocation, note, operatorName);
+    refreshTaskCounts(db, taskId);
+    db.exec('COMMIT');
+    return { status: 'recorded' as const, replayed: false, record: recordRow(db.prepare('SELECT * FROM inventory_records WHERE id = ?').get(Number(record.id)) as Record<string, unknown>), ...getInventoryTask(db, taskId)! };
+  } catch (error) { db.exec('ROLLBACK'); throw error; }
 }
 
 export function completeInventoryTask(db: DatabaseSync, taskId: number, operatorName = '') {
   const task = db.prepare('SELECT * FROM inventory_tasks WHERE id = ?').get(taskId) as Record<string, unknown> | undefined;
   if (!task) return { status: 'not_found' as const };
   if (task.status !== 'completed') {
-    db.prepare(`UPDATE inventory_records SET result = 'missing', operator_name = ?, checked_at = CURRENT_TIMESTAMP WHERE task_id = ? AND result = 'pending'`).run(operatorName, taskId);
-    db.prepare(`UPDATE inventory_tasks SET status = 'completed', completed_at = CURRENT_TIMESTAMP WHERE id = ?`).run(taskId);
-    refreshTaskCounts(db, taskId);
+    db.exec('BEGIN');
+    try {
+      const pending = db.prepare("SELECT * FROM inventory_records WHERE task_id = ? AND result = 'pending'").all(taskId) as Array<Record<string, unknown>>;
+      for (const record of pending) auditInventory(db, task, record, 'missing', '', '', operatorName);
+      db.prepare(`UPDATE inventory_records SET result = 'missing', operator_name = ?, checked_at = NULL WHERE task_id = ? AND result = 'pending'`).run(operatorName, taskId);
+      db.prepare(`UPDATE inventory_tasks SET status = 'completed', completed_at = CURRENT_TIMESTAMP WHERE id = ?`).run(taskId);
+      refreshTaskCounts(db, taskId);
+      db.exec('COMMIT');
+    } catch (error) { db.exec('ROLLBACK'); throw error; }
   }
   return { status: 'completed' as const, ...getInventoryTask(db, taskId)! };
 }

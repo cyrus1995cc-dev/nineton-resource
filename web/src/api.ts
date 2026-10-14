@@ -1,15 +1,14 @@
 import type { Asset, AssetListResponse, AssetUpdateInput, AuthUser, ImportResponse, InventoryTask, InventoryTaskDetail, ManagedUser, Stats } from './types';
+import { createApiClient } from './apiClient';
 
 const authToken = () => typeof localStorage === 'undefined' ? '' : localStorage.getItem('asset_token') ?? '';
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const token = authToken();
-  const response = await fetch(`${apiBaseUrl}${path}`, { headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(init?.headers ?? {}) }, ...init });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.message ?? `请求失败（${response.status}）`);
-  return payload as T;
-}
+export const SESSION_EXPIRED_EVENT = 'asset-session-expired';
+const request = createApiClient({ baseUrl: apiBaseUrl, getToken: authToken, onSessionExpired: () => {
+  localStorage.removeItem('asset_token');
+  window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+} });
 
 export const api = {
   login: async (username: string, password: string) => {
@@ -48,10 +47,7 @@ export const api = {
   previewImport: async (file: File) => {
     const body = new FormData();
     body.append('file', file);
-    const response = await fetch(`${apiBaseUrl}/api/imports/preview`, { method: 'POST', body });
-    const payload = await response.json();
-    if (!response.ok) throw new Error(payload.message ?? '导入预览失败');
-    return payload as ImportResponse;
+    return request<ImportResponse>('/api/imports/preview', { method: 'POST', body });
   },
   confirmImport: (input: Pick<ImportResponse, 'batchId' | 'fileName' | 'rows'>) => request<{ totalRows: number; newRows: number; updatedRows: number; unchangedRows: number; invalidRows: number }>('/api/imports/confirm', {
     method: 'POST', body: JSON.stringify(input),
@@ -61,7 +57,7 @@ export const api = {
   createInventoryTask: (input: { name: string; location?: string; department?: string; operatorName?: string }) => request<InventoryTaskDetail>('/api/inventory/tasks', {
     method: 'POST', body: JSON.stringify(input),
   }),
-  recordInventoryScan: (taskId: number, input: { assetCode: string; actualLocation?: string; note?: string; operatorName?: string }) => request<InventoryTaskDetail & { record: InventoryTaskDetail['records'][number] }>(`/api/inventory/tasks/${taskId}/records`, {
+  recordInventoryScan: (taskId: number, input: { assetCode: string; actualLocation?: string; note?: string; operatorName?: string }) => request<InventoryTaskDetail & { record: InventoryTaskDetail['records'][number]; replayed?: boolean }>(`/api/inventory/tasks/${taskId}/records`, {
     method: 'POST', body: JSON.stringify(input),
   }),
   completeInventoryTask: (taskId: number, operatorName?: string) => request<InventoryTaskDetail>(`/api/inventory/tasks/${taskId}/complete`, {

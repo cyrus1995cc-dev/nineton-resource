@@ -74,6 +74,7 @@ export type ImportResponse = {
   fileName: string;
   rows: Record<string, unknown>[];
   preview: ImportPreview;
+  errors?: Array<{ row: number; assetCode: string; reason: string }>;
 };
 
 export type InventoryTask = {
@@ -87,7 +88,7 @@ export type InventoryTask = {
   checked_count: number;
   difference_count: number;
   created_at: string;
-  completed_at: string;
+  completed_at: string | null;
 };
 
 export type InventoryRecord = {
@@ -104,7 +105,7 @@ export type InventoryRecord = {
   actual_location: string;
   note: string;
   operator_name: string;
-  checked_at: string;
+  checked_at: string | null;
 };
 
 export type InventoryTaskDetail = { task: InventoryTask; records: InventoryRecord[] };

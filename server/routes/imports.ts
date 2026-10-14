@@ -14,7 +14,10 @@ export function createImportRouter(db: DatabaseSync) {
     try {
       const rows = parseWorkbook(req.file.buffer);
       const preview = previewImport(db, rows);
-      return res.json({ batchId: randomUUID(), fileName: req.file.originalname, rows, preview });
+      return res.json({ batchId: randomUUID(), fileName: req.file.originalname, rows,
+        preview: { newRows: preview.newRows.length, updatedRows: preview.updatedRows.length, unchangedRows: preview.unchangedRows.length, invalidRows: preview.invalidRows.length },
+        errors: preview.invalidRows.map(({ row, reason }) => ({ row: rows.indexOf(row) + 2, assetCode: row.asset_code, reason })),
+      });
     } catch (error) {
       return res.status(400).json({ message: error instanceof Error ? error.message : 'Excel 解析失败' });
     }

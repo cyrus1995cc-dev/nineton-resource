@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatSystemTime } from '../dateTime';
 import { reactive, ref, watch } from 'vue';
 import type { Asset, AssetUpdateInput } from '../types';
 
@@ -140,7 +141,7 @@ function tabEvents() {
           <div v-else-if="activeTab === 'events' || activeTab === 'maintenance' || activeTab === 'inventory'" class="form-section history-section">
             <div class="section-title"><div><span class="eyebrow">资产履历</span><h3>{{ tabs.find((tab) => tab.id === activeTab)?.label }}</h3></div><span>{{ tabEvents().length }} 条</span></div>
             <div v-if="!tabEvents().length" class="empty-history">暂无{{ tabs.find((tab) => tab.id === activeTab)?.label }}</div>
-            <div v-for="event in tabEvents()" :key="event.id" class="timeline-item"><span class="timeline-dot"></span><div><strong>{{ event.type }}</strong><span>{{ event.operator_name || '系统' }} · {{ new Date(event.created_at).toLocaleString('zh-CN') }}</span><small v-if="event.note">{{ event.note }}</small></div></div>
+            <div v-for="event in tabEvents()" :key="event.id" class="timeline-item"><span class="timeline-dot"></span><div><strong>{{ event.type }}</strong><span>{{ event.operator_name || '系统' }} · {{ formatSystemTime(event.created_at) }}</span><small v-if="event.note">{{ event.note }}</small></div></div>
           </div>
 
           <div class="form-section finance-section">
@@ -169,7 +170,7 @@ function tabEvents() {
           <button v-if="canWrite !== false && asset.status === '空闲'" class="primary-button" @click="showClaim = true">领用资产</button>
           <button v-if="canWrite !== false && (asset.status === '在用' || asset.status === '借出')" class="secondary-button" :disabled="busy" @click="emit('event', { type: asset.status === '借出' ? '借出归还' : '归还' })">归还资产</button>
         </div>
-        <div class="timeline"><div class="section-title"><h3>流转记录</h3><span>{{ asset.events?.length ?? 0 }} 条</span></div><div v-if="!asset.events?.length" class="muted">暂无流转记录</div><div v-for="event in asset.events" :key="event.id" class="timeline-item"><span class="timeline-dot"></span><div><strong>{{ event.type }}</strong><span>{{ event.operator_name || '系统' }} · {{ new Date(event.created_at).toLocaleString('zh-CN') }}</span><small v-if="event.note">{{ event.note }}</small></div></div></div>
+        <div class="timeline"><div class="section-title"><h3>流转记录</h3><span>{{ asset.events?.length ?? 0 }} 条</span></div><div v-if="!asset.events?.length" class="muted">暂无流转记录</div><div v-for="event in asset.events" :key="event.id" class="timeline-item"><span class="timeline-dot"></span><div><strong>{{ event.type }}</strong><span>{{ event.operator_name || '系统' }} · {{ formatSystemTime(event.created_at) }}</span><small v-if="event.note">{{ event.note }}</small></div></div></div>
       </template>
 
       <div v-if="showClaim" class="claim-form"><h3>确认领用</h3><input v-model="assignee" placeholder="使用人" /><input v-model="department" placeholder="使用部门" /><textarea v-model="note" placeholder="备注"></textarea><div class="form-actions"><button class="secondary-button" @click="showClaim = false">取消</button><button class="primary-button" @click="submitClaim">确认领用</button></div></div>

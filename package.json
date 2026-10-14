@@ -9,6 +9,7 @@
     "build": "vite build",
     "test": "vitest run",
     "test:watch": "vitest",
+    "typecheck": "vue-tsc --noEmit",
     "import": "tsx scripts/import-workbook.ts",
     "verify:seed": "tsx scripts/verify-seed.ts",
     "android:sync": "npm run build && npx cap sync android",
@@ -38,6 +39,7 @@
     "tsx": "^4.20.5",
     "typescript": "^5.9.3",
     "vite": "^7.1.9",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    "vue-tsc": "^3.3.13"
   }
 }

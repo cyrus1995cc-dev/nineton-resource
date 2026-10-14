@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
 import { openDatabase } from './db';
 import { createApp } from './index';
+import * as XLSX from 'xlsx';
 
 describe('authentication API', () => {
   afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
@@ -28,6 +29,22 @@ describe('authentication API', () => {
     const db = openDatabase(':memory:');
     const response = await request(createApp({ db, auth: true })).post('/api/auth/login').send({ username: 'admin', password: 'wrong' });
     expect(response.status).toBe(401);
+  });
+
+  it('previews and confirms an authenticated Excel upload', async () => {
+    const db = openDatabase(':memory:'); const app = createApp({ db, auth: true });
+    const login = await request(app).post('/api/auth/login').send({ username: 'admin', password: 'admin123' });
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet([{ 资产编码: 'IMP-001', 资产名称: '导入验收设备', 资产状态: '空闲' }]), '资产');
+    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+    const preview = await request(app).post('/api/imports/preview').set('Authorization', `Bearer ${login.body.token}`).attach('file', buffer, 'qa.xlsx');
+    expect(preview.status).toBe(200);
+    expect(preview.body.preview.newRows).toBe(1);
+    expect(db.prepare('SELECT * FROM assets').all()).toHaveLength(0);
+    const confirmed = await request(app).post('/api/imports/confirm').set('Authorization', `Bearer ${login.body.token}`).send(preview.body);
+    expect(confirmed.status).toBe(200);
+    expect((await request(app).get('/api/assets/IMP-001').set('Authorization', `Bearer ${login.body.token}`)).body.name).toBe('导入验收设备');
+    db.close();
   });
 
   it('lets an administrator create a read-only user whose writes are denied', async () => {
