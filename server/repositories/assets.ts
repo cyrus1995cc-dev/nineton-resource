@@ -2,6 +2,10 @@ import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import { parseQr } from '../../shared/qr';
 import { availableFlowTypes, type FlowType } from '../../shared/flows';
+import { assetEditFields, fieldProblem } from '../../shared/assets';
+import { AppError, integer } from '../errors';
+import type { AuthUser } from '../auth';
+import { assetScope } from '../access';
 
 export type AssetEventInput = {
   type: string;
@@ -12,6 +16,7 @@ export type AssetEventInput = {
   note?: string;
   requestId?: string;
   flowId?: number;
+  toEmployeeId?: number | null;
 };
 
 export type AssetUpdateInput = {
@@ -34,6 +39,7 @@ export type AssetUpdateInput = {
   amount_taxed?: number;
   amount_untaxed?: number;
   tax_amount?: number;
+  expectedVersion?: number;
   operatorName?: string;
   note?: string;
 };
@@ -42,7 +48,7 @@ const editableFields = [
   'id', 'asset_code', 'qr_raw', 'qr_format', 'category_level1', 'category_path', 'created_at', 'name', 'status',
   'location', 'company', 'model', 'cpu', 'discrete_gpu', 'memory', 'gpu_model', 'serial_number', 'remark',
   'photo_url', 'assignee', 'department', 'received_at', 'amount_taxed', 'amount_untaxed', 'tax_amount',
-  'source_updated_at', 'created_at_system', 'updated_at_system',
+  'source_updated_at', 'created_at_system', 'updated_at_system', 'version', 'assignee_employee_id',
 ];
 
 const assetUpdateFields = [
@@ -53,30 +59,32 @@ const assetUpdateFields = [
 
 function mapAsset(row: Record<string, unknown> | undefined) {
   if (!row) return null;
-  return Object.fromEntries(editableFields.map((field) => [field, row[field] ?? '']));
+  return Object.fromEntries(editableFields.map((field) => [field, row[field] ?? (field === 'assignee_employee_id' ? null : '')]));
 }
 
-export function listAssets(db: DatabaseSync, params: { search?: string; status?: string; category?: string; location?: string; page?: number; pageSize?: number }) {
+export function listAssets(db: DatabaseSync, params: { search?: string; status?: string; category?: string; location?: string; page?: number; pageSize?: number; scope?: string }, actor?: AuthUser) {
   const where: string[] = [];
-  const values: string[] = [];
+  const values: (string | number)[] = [];
+  const scope = params.scope === 'mine' ? { clause: 'assignee_employee_id = ?', values: [actor?.employee_id ?? -1] } : assetScope(actor, params.scope === 'available');
+  where.push(scope.clause); values.push(...scope.values);
   if (params.search) {
-    where.push('(asset_code LIKE ? OR name LIKE ? OR model LIKE ? OR serial_number LIKE ?)');
+    where.push('(asset_code LIKE ? OR name LIKE ? OR model LIKE ? OR serial_number LIKE ? OR assignee LIKE ? OR department LIKE ?)');
     const query = `%${params.search}%`;
-    values.push(query, query, query, query);
+    values.push(query, query, query, query, query, query);
   }
   if (params.status) { where.push('status = ?'); values.push(params.status); }
   if (params.category) { where.push('category_path = ?'); values.push(params.category); }
   if (params.location) { where.push('location = ?'); values.push(params.location); }
   const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
-  const page = Math.max(1, Number(params.page ?? 1));
-  const pageSize = Math.min(100, Math.max(1, Number(params.pageSize ?? 20)));
+  const page = integer(params.page, '页码', 1, 1000000);
+  const pageSize = integer(params.pageSize, '每页条数', 20, 100);
   const total = Number((db.prepare(`SELECT COUNT(*) AS count FROM assets ${clause}`).get(...values) as { count: number }).count);
   const rows = db.prepare(`SELECT * FROM assets ${clause} ORDER BY updated_at_system DESC, id DESC LIMIT ? OFFSET ?`)
     .all(...values, pageSize, (page - 1) * pageSize) as Array<Record<string, unknown>>;
   return { items: rows.map(mapAsset), total, page, pageSize };
 }
 
-export function getAsset(db: DatabaseSync, assetCode: string) {
+export function getAsset(db: DatabaseSync, assetCode: string): (Record<string, any> & { events: Array<Record<string, any>> }) | null {
   const row = db.prepare('SELECT * FROM assets WHERE asset_code = ?').get(assetCode) as Record<string, unknown> | undefined;
   if (!row) return null;
   const events = (db.prepare(`SELECT e.*, f.document_no FROM asset_events e LEFT JOIN asset_flows f ON f.id = e.flow_id
@@ -86,12 +94,14 @@ export function getAsset(db: DatabaseSync, assetCode: string) {
 }
 
 export function saveAssetQr(db: DatabaseSync, assetCode: string, raw: string) {
+  if (typeof raw !== 'string' || raw.length > 4000) return { status: 'invalid' as const };
   const parsed = parseQr(raw);
   if (!parsed.assetCode || parsed.assetCode !== assetCode) return { status: 'invalid' as const };
   const existing = db.prepare('SELECT qr_raw, qr_format FROM assets WHERE asset_code = ?').get(assetCode) as { qr_raw: string | null; qr_format: string | null } | undefined;
   if (!existing) return { status: 'not_found' as const };
-  // A manual code lookup must never replace the string printed on an existing label.
-  if (parsed.format === 'asset_code' && existing.qr_raw && parseQr(existing.qr_raw).format !== 'asset_code') {
+  // URLs printed on old labels are immutable. Different observations are aliases.
+  if (existing.qr_raw) {
+    if (existing.qr_raw !== parsed.raw) db.prepare('INSERT OR IGNORE INTO asset_qr_aliases (asset_id, raw) SELECT id, ? FROM assets WHERE asset_code = ?').run(parsed.raw, assetCode);
     return { status: 'saved' as const, qr_raw: existing.qr_raw, qr_format: existing.qr_format };
   }
   const result = db.prepare('UPDATE assets SET qr_raw = ?, qr_format = ?, updated_at_system = CURRENT_TIMESTAMP WHERE asset_code = ?')
@@ -103,11 +113,16 @@ export function saveAssetQr(db: DatabaseSync, assetCode: string, raw: string) {
 export function updateAsset(db: DatabaseSync, assetCode: string, input: AssetUpdateInput) {
   const asset = db.prepare('SELECT * FROM assets WHERE asset_code = ?').get(assetCode) as Record<string, unknown> | undefined;
   if (!asset) return { status: 'not_found' as const };
+  if (input.expectedVersion !== undefined && integer(input.expectedVersion, '资料版本') !== Number(asset.version)) throw new AppError(409, '资料已被其他人更新，请重新打开资产核对后保存');
+  for (const field of assetEditFields) {
+    if (input[field] === undefined) continue;
+    const problem = fieldProblem(field, input[field]); if (problem) throw new AppError(400, problem);
+  }
 
   const updates: string[] = [];
   const values: unknown[] = [];
   for (const field of assetUpdateFields) {
-    if (input[field] === undefined) continue;
+    if (input[field] === undefined || String(input[field]) === String(asset[field] ?? '')) continue;
     updates.push(`${field} = ?`);
     values.push(input[field]);
   }
@@ -120,8 +135,9 @@ export function updateAsset(db: DatabaseSync, assetCode: string, input: AssetUpd
     .map((field) => ({ field, before: asset[field] ?? '', after: input[field] }));
   db.exec('BEGIN');
   try {
-    values.push(assetCode);
-    db.prepare(`UPDATE assets SET ${updates.join(', ')}, updated_at_system = CURRENT_TIMESTAMP WHERE asset_code = ?`).run(...(values as any[]));
+    values.push(assetCode, asset.version);
+    const saved = db.prepare(`UPDATE assets SET ${updates.join(', ')}, updated_at_system = CURRENT_TIMESTAMP WHERE asset_code = ? AND version = ?`).run(...(values as any[]));
+    if (!saved.changes) throw new AppError(409, '资料已变化，请重新打开资产核对后保存');
     const event = db.prepare(`INSERT INTO asset_events
       (asset_id, asset_code, type, operator_name, from_status, to_status, from_assignee, to_assignee,
        from_department, to_department, from_location, to_location, note, changes_json)
@@ -184,8 +200,9 @@ export function createAssetEvent(db: DatabaseSync, assetCode: string, input: Ass
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(...([asset.id as number, assetCode, input.type, input.operatorName ?? '', asset.status as string, nextStatus, asset.assignee ?? '', nextAssignee,
         asset.department ?? '', nextDepartment, asset.location ?? '', nextLocation, input.note ?? '', requestId, input.flowId ?? null, JSON.stringify(changes)] as any[]));
-    db.prepare(`UPDATE assets SET status = ?, assignee = ?, department = ?, location = ?, updated_at_system = CURRENT_TIMESTAMP WHERE asset_code = ?`)
-      .run(nextStatus, nextAssignee, nextDepartment, nextLocation, assetCode);
+    const employeeId = transition.clearAssignee ? null : input.toEmployeeId === undefined ? asset.assignee_employee_id ?? null : input.toEmployeeId;
+    db.prepare(`UPDATE assets SET status = ?, assignee = ?, department = ?, location = ?, assignee_employee_id = ?, updated_at_system = CURRENT_TIMESTAMP WHERE asset_code = ?`)
+      .run(nextStatus, nextAssignee, nextDepartment, nextLocation, employeeId as number | null, assetCode);
     db.exec('RELEASE asset_event');
     return { status: 'created' as const, event: db.prepare('SELECT * FROM asset_events WHERE id = ?').get(result.lastInsertRowid), asset: getAsset(db, assetCode) };
   } catch (error) {
@@ -194,13 +211,15 @@ export function createAssetEvent(db: DatabaseSync, assetCode: string, input: Ass
   }
 }
 
-export function getStats(db: DatabaseSync) {
-  const total = Number((db.prepare('SELECT COUNT(*) AS count FROM assets').get() as { count: number }).count);
-  const statusRows = db.prepare('SELECT status, COUNT(*) AS count FROM assets GROUP BY status ORDER BY status').all() as Array<{ status: string; count: number }>;
-  const categoryRows = db.prepare('SELECT COALESCE(category_path, \'未分类\') AS name, COUNT(*) AS count FROM assets GROUP BY category_path ORDER BY count DESC').all();
-  const locationRows = db.prepare('SELECT COALESCE(location, \'未设置\') AS name, COUNT(*) AS count FROM assets GROUP BY location ORDER BY count DESC').all();
-  const companyRows = db.prepare('SELECT COALESCE(company, \'未设置\') AS name, COUNT(*) AS count FROM assets GROUP BY company ORDER BY count DESC').all();
-  const amounts = db.prepare('SELECT COALESCE(SUM(amount_taxed), 0) AS taxed, COALESCE(SUM(amount_untaxed), 0) AS untaxed, COALESCE(SUM(tax_amount), 0) AS tax FROM assets').get() as { taxed: number; untaxed: number; tax: number };
+export function getStats(db: DatabaseSync, actor?: AuthUser) {
+  const scope = assetScope(actor);
+  const query = (sql: string) => db.prepare(sql.replace('FROM assets', `FROM assets WHERE ${scope.clause}`));
+  const total = Number((query('SELECT COUNT(*) AS count FROM assets').get(...scope.values) as { count: number }).count);
+  const statusRows = query('SELECT status, COUNT(*) AS count FROM assets GROUP BY status ORDER BY status').all(...scope.values) as Array<{ status: string; count: number }>;
+  const categoryRows = query('SELECT COALESCE(category_path, \'未分类\') AS name, COUNT(*) AS count FROM assets GROUP BY category_path ORDER BY count DESC').all(...scope.values);
+  const locationRows = query('SELECT COALESCE(location, \'未设置\') AS name, COUNT(*) AS count FROM assets GROUP BY location ORDER BY count DESC').all(...scope.values);
+  const companyRows = query('SELECT COALESCE(company, \'未设置\') AS name, COUNT(*) AS count FROM assets GROUP BY company ORDER BY count DESC').all(...scope.values);
+  const amounts = query('SELECT COALESCE(SUM(amount_taxed), 0) AS taxed, COALESCE(SUM(amount_untaxed), 0) AS untaxed, COALESCE(SUM(tax_amount), 0) AS tax FROM assets').get(...scope.values) as { taxed: number; untaxed: number; tax: number };
   return {
     total,
     status: Object.fromEntries(statusRows.map((row) => [row.status, Number(row.count)])),

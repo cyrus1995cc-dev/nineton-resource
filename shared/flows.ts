@@ -15,7 +15,7 @@ export type FlowLog = { id: number; action: 'submitted' | 'approved' | 'rejected
 export type FlowComment = { id: number; user_id: number; user_name: string; content: string; created_at: string };
 export type FlowNotification = { id: number; kind: 'approval_pending' | 'completed' | 'rejected' | 'withdrawn'; recipient_name: string; status: 'pending' | 'sent' | 'failed' | 'cancelled'; created_at: string };
 export type FlowDetail = { flow: Flow; items: FlowItem[]; steps: FlowStep[]; logs: FlowLog[]; comments: FlowComment[]; notifications: FlowNotification[] };
-export type FlowInput = { type: FlowType; assetCodes: string[]; applicantDepartment: string; approverIds: number[]; toAssignee?: string; toDepartment?: string; toLocation?: string; note?: string; requestId: string };
+export type FlowInput = { type: FlowType; assetCodes: string[]; applicantDepartment: string; approverIds: number[]; toEmployeeId?: number | null; toAssignee?: string; toDepartment?: string; toLocation?: string; note?: string; requestId: string };
 export function availableFlowTypes(status: string): FlowType[] {
   if (status === '空闲') return ['领用', '借出', '调拨', '维修', '报废', '报失'];
   if (status === '在用') return ['归还', '交接', '调拨', '维修', '报废', '报失'];

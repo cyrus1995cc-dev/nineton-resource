@@ -72,12 +72,13 @@ describe('authentication API', () => {
     expect(response.body).not.toHaveProperty('clientSecret');
   });
 
-  it('exchanges a DingTalk auth code and creates a viewer session', async () => {
+  it('exchanges a DingTalk auth code and binds a verified corporate employee session', async () => {
     const db = openDatabase(':memory:');
     const app = createApp({ db, auth: true });
     vi.stubEnv('DINGTALK_CLIENT_ID', 'client-id');
     vi.stubEnv('DINGTALK_CLIENT_SECRET', 'client-secret');
     vi.stubEnv('DINGTALK_CORP_ID', 'corp-id');
+    db.prepare("INSERT INTO employees (name, corp_id, dingtalk_user_id, union_id) VALUES ('钉钉用户', 'corp-id', 'corp-user-1', 'ding-union-1')").run();
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ accessToken: 'user-access-token' }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ unionId: 'ding-union-1', nick: '钉钉用户' }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
@@ -85,7 +86,7 @@ describe('authentication API', () => {
 
     const login = await request(app).post('/api/auth/dingtalk/login').send({ code: 'auth-code' });
     expect(login.status).toBe(200);
-    expect(login.body.user).toMatchObject({ display_name: '钉钉用户', role: 'viewer' });
+    expect(login.body.user).toMatchObject({ display_name: '钉钉用户', role: 'employee' });
     expect(fetchMock).toHaveBeenCalledTimes(2);
 
     const me = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${login.body.token}`);

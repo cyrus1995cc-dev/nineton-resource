@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import type { DatabaseSync } from 'node:sqlite';
-import { authenticate, authenticateDingTalk, authTokenFromRequest, createUser, getDingTalkConfig, listUsers, resolveSession, revokeSession } from '../auth';
+import { authenticate, authenticateDingTalk, authTokenFromRequest, createUser, getDingTalkConfig, listUsers, resolveSession, revokeSession, updateUser } from '../auth';
+import { AppError, integer } from '../errors';
 import { requireAuth, requireRole } from '../middleware/auth';
 
 export function createAuthRouter(db: DatabaseSync) {
@@ -19,6 +20,7 @@ export function createAuthRouter(db: DatabaseSync) {
       if (result.status === 'disabled_user') return res.status(403).json({ message: '钉钉账号已停用' });
       return res.json(result);
     } catch (error) {
+      if (error instanceof AppError) return res.status(error.status).json({ message: error.message });
       return res.status(502).json({ message: error instanceof Error ? error.message : '钉钉登录失败' });
     }
   });
@@ -37,5 +39,6 @@ export function createAuthRouter(db: DatabaseSync) {
     if (result.status === 'duplicate') return res.status(409).json({ message: '用户名已存在' });
     return res.status(201).json(result);
   });
+  router.patch('/users/:id', requireAuth(db), requireRole('admin'), (req, res) => res.json({ user: updateUser(db, req.user!, integer(req.params.id, '账号编号'), req.body ?? {}) }));
   return router;
 }

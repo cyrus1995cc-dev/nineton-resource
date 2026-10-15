@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import type { DatabaseSync } from 'node:sqlite';
+import { assetOwnershipFields, fieldProblem } from '../shared/assets';
 
 export type ImportRow = {
   asset_code: string;
@@ -125,6 +126,15 @@ export function previewImport(db: DatabaseSync, rows: ImportRow[]): ImportPrevie
     }
     seen.add(row.asset_code);
     const existing = db.prepare('SELECT * FROM assets WHERE asset_code = ?').get(row.asset_code) as Record<string, unknown> | undefined;
+    const problem = comparableFields.map((field) => {
+      if (!hasValue(row[field]) && existing) return null;
+      if (!hasValue(row[field]) && !['asset_code', 'name'].includes(field)) return null;
+      return fieldProblem(field, row[field]);
+    }).find(Boolean);
+    if (problem) { preview.invalidRows.push({ row, reason: problem }); continue; }
+    if (existing && assetOwnershipFields.some((field) => hasValue(row[field]) && String(row[field]) !== String(existing[field] ?? ''))) {
+      preview.invalidRows.push({ row, reason: '已有资产的状态、使用人、部门、位置或领用日期发生变化，请通过流转审批调整；本行未导入' }); continue;
+    }
     if (!existing) preview.newRows.push(row);
     else if (isSame(existing, row)) preview.unchangedRows.push(row);
     else preview.updatedRows.push(row);
@@ -138,7 +148,9 @@ const dbFields: Array<keyof ImportRow> = [
   'department', 'received_at', 'amount_taxed', 'amount_untaxed', 'tax_amount',
 ];
 
-export function applyImport(db: DatabaseSync, rows: ImportRow[], batchId: string, fileName = ''): ImportResult {
+export function applyImport(db: DatabaseSync, rows: ImportRow[], batchId: string, fileName = '', actor = { id: 0, display_name: '命令行导入' }): ImportResult {
+  const replay = db.prepare('SELECT * FROM import_batches WHERE checksum = ?').get(batchId) as Record<string, unknown> | undefined;
+  if (replay) return { totalRows: Number(replay.total_rows), newRows: Number(replay.new_rows), updatedRows: Number(replay.updated_rows), unchangedRows: Number(replay.unchanged_rows), invalidRows: Number(replay.invalid_rows) };
   const preview = previewImport(db, rows);
   const result: ImportResult = {
     totalRows: rows.length,
@@ -148,13 +160,13 @@ export function applyImport(db: DatabaseSync, rows: ImportRow[], batchId: string
     invalidRows: preview.invalidRows.length,
   };
   const now = new Date().toISOString();
-  db.exec('BEGIN');
+  db.exec('SAVEPOINT import_apply');
   try {
     for (const row of [...preview.newRows, ...preview.updatedRows]) {
-      const existing = db.prepare('SELECT id FROM assets WHERE asset_code = ?').get(row.asset_code) as { id: number } | undefined;
+      const existing = db.prepare('SELECT * FROM assets WHERE asset_code = ?').get(row.asset_code) as Record<string, any> | undefined;
       if (!existing) {
         const columns = ['asset_code', ...dbFields, 'source_updated_at'];
-        const values = [row.asset_code, ...dbFields.map((field) => row[field] ?? 0), now];
+        const values = [row.asset_code, ...dbFields.map((field) => field === 'status' ? row[field] || '空闲' : row[field] ?? 0), now];
         const placeholders = columns.map(() => '?').join(', ');
         db.prepare(`INSERT INTO assets (${columns.join(', ')}) VALUES (${placeholders})`).run(...(values as any[]));
       } else {
@@ -170,13 +182,19 @@ export function applyImport(db: DatabaseSync, rows: ImportRow[], batchId: string
         values.push(now, row.asset_code);
         db.prepare(`UPDATE assets SET ${updates.join(', ')} WHERE asset_code = ?`).run(...(values as any[]));
       }
+      const stored = db.prepare('SELECT * FROM assets WHERE asset_code = ?').get(row.asset_code) as Record<string, any>;
+      const changes = dbFields.filter((field) => String(existing?.[field] ?? '') !== String(stored[field] ?? ''))
+        .map((field) => ({ field, before: existing?.[field] ?? '', after: stored[field] ?? '' }));
+      db.prepare(`INSERT INTO asset_events (asset_id, asset_code, type, operator_name, from_status, to_status, from_assignee, to_assignee, from_department, to_department, from_location, to_location, note, changes_json)
+        VALUES (?, ?, '导入', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(stored.id, row.asset_code, actor.display_name, existing?.status ?? '', stored.status, existing?.assignee ?? '', stored.assignee ?? '', existing?.department ?? '', stored.department ?? '', existing?.location ?? '', stored.location ?? '', `导入批次 ${batchId} · ${fileName}`, JSON.stringify(changes));
     }
     db.prepare(`INSERT INTO import_batches (file_name, checksum, total_rows, new_rows, updated_rows, unchanged_rows, invalid_rows, errors_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(fileName, batchId, result.totalRows, result.newRows, result.updatedRows, result.unchangedRows, result.invalidRows, JSON.stringify(preview.invalidRows.map((item) => item.reason)));
-    db.exec('COMMIT');
+    db.prepare('INSERT INTO audit_logs (actor_id, actor_name, action, target, details_json) VALUES (?, ?, ?, ?, ?)').run(actor.id || null, actor.display_name, 'import', batchId, JSON.stringify(result));
+    db.exec('RELEASE import_apply');
     return result;
   } catch (error) {
-    db.exec('ROLLBACK');
+    db.exec('ROLLBACK TO import_apply; RELEASE import_apply');
     throw error;
   }
 }

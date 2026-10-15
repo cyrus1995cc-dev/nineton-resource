@@ -1,3 +1,4 @@
+import { assetCodePattern } from './assets';
 export type QrFormat = 'gongbeiyun_url' | 'native_url' | 'asset_code' | 'unknown';
 
 export type ParsedQr = {
@@ -5,8 +6,6 @@ export type ParsedQr = {
   assetCode: string | null;
   format: QrFormat;
 };
-
-const assetCodePattern = /^[A-Z]{2,5}-\d{3,6}$/;
 
 export function parseQr(input: string): ParsedQr {
   const raw = String(input ?? '').trim();

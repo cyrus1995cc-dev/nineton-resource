@@ -1,4 +1,5 @@
 import type { Asset, AssetListResponse, AssetUpdateInput, AuthUser, ImportResponse, InventoryTask, InventoryTaskDetail, ManagedUser, Stats } from './types';
+import type { Employee, DirectoryStatus, EmployeeMapping } from './directory';
 import { createApiClient } from './apiClient';
 import type { Flow, FlowDetail, FlowInput } from '../../shared/flows';
 
@@ -25,18 +26,26 @@ export const api = {
   },
   me: async () => (await request<{ user: AuthUser }>('/api/auth/me')).user,
   listUsers: () => request<{ users: ManagedUser[] }>('/api/auth/users'),
+  updateUser: (id: number, input: { role: AuthUser['role']; active: boolean; employee_id?: number | null }) => request(`/api/auth/users/${id}`, { method: 'PATCH', body: JSON.stringify(input) }),
+  listEmployees: (all = false) => request<{ employees: Employee[] }>(`/api/directory/employees?all=${all}`),
+  directoryStatus: () => request<DirectoryStatus>('/api/directory/status'),
+  syncDirectory: () => request<{ employees: number; departments: number }>('/api/directory/sync', { method: 'POST' }),
+  directorySettings: (input: { rootDepartmentIds: number[]; intervalMinutes: number }) => request('/api/directory/settings', { method: 'PUT', body: JSON.stringify(input) }),
+  employeeMappings: () => request<{ assets: EmployeeMapping[] }>('/api/directory/mappings'),
+  bindAssetEmployee: (code: string, employeeId: number, expectedVersion: number, reason: string) => request(`/api/directory/mappings/${encodeURIComponent(code)}`, { method: 'POST', body: JSON.stringify({ employeeId, expectedVersion, reason }) }),
+  setEmployeeActive: (id: number, active: boolean, reason: string) => request(`/api/directory/employees/${id}`, { method: 'PATCH', body: JSON.stringify({ active, reason }) }),
   createUser: (input: { username: string; password: string; display_name: string; role: ManagedUser['role'] }) => request<{ user: ManagedUser }>('/api/auth/users', {
     method: 'POST', body: JSON.stringify(input),
   }),
   logout: async () => { await request<void>('/api/auth/logout', { method: 'POST' }).catch(() => undefined); localStorage.removeItem('asset_token'); },
   getStats: () => request<Stats>('/api/stats'),
-  flowOptions: () => request<{ approvers: AuthUser[]; notification: { mode: string; message: string } }>('/api/flows/options'),
+  flowOptions: () => request<{ approvers: AuthUser[]; employees: Employee[]; notification: { mode: string; message: string } }>('/api/flows/options'),
   listFlows: (params: { scope: string; status: string; search: string; page: number }) => request<{ items: Flow[]; total: number; page: number; pageSize: number }>(`/api/flows?${new URLSearchParams(Object.entries(params).map(([k, v]) => [k, String(v)]))}`),
   getFlow: (id: number) => request<FlowDetail>(`/api/flows/${id}`),
   createFlow: (input: FlowInput) => request<FlowDetail>('/api/flows', { method: 'POST', body: JSON.stringify(input) }),
   actFlow: (id: number, action: 'approve' | 'reject' | 'withdraw', comment: string) => request<FlowDetail>(`/api/flows/${id}/${action}`, { method: 'POST', body: JSON.stringify({ comment }) }),
   commentFlow: (id: number, content: string) => request<FlowDetail>(`/api/flows/${id}/comments`, { method: 'POST', body: JSON.stringify({ content }) }),
-  listAssets: (params: { search?: string; status?: string; category?: string; location?: string; page?: number; pageSize?: number }) => {
+  listAssets: (params: { search?: string; status?: string; category?: string; location?: string; page?: number; pageSize?: number; scope?: string }) => {
     const query = new URLSearchParams();
     for (const [key, value] of Object.entries(params)) if (value) query.set(key, String(value));
     return request<AssetListResponse>(`/api/assets?${query}`);
@@ -53,8 +62,8 @@ export const api = {
     body.append('file', file);
     return request<ImportResponse>('/api/imports/preview', { method: 'POST', body });
   },
-  confirmImport: (input: Pick<ImportResponse, 'batchId' | 'fileName' | 'rows'>) => request<{ totalRows: number; newRows: number; updatedRows: number; unchangedRows: number; invalidRows: number }>('/api/imports/confirm', {
-    method: 'POST', body: JSON.stringify(input),
+  confirmImport: (input: Pick<ImportResponse, 'batchId'>) => request<{ totalRows: number; newRows: number; updatedRows: number; unchangedRows: number; invalidRows: number }>('/api/imports/confirm', {
+    method: 'POST', body: JSON.stringify({ batchId: input.batchId }),
   }),
   listInventoryTasks: () => request<{ tasks: InventoryTask[] }>('/api/inventory/tasks'),
   getInventoryTask: (taskId: number) => request<InventoryTaskDetail>(`/api/inventory/tasks/${taskId}`),

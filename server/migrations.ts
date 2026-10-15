@@ -83,7 +83,7 @@ export function migrate(db: DatabaseSync) {
       username TEXT NOT NULL UNIQUE,
       password_hash TEXT NOT NULL,
       display_name TEXT NOT NULL,
-      role TEXT NOT NULL DEFAULT 'viewer' CHECK (role IN ('admin', 'asset_manager', 'viewer')),
+      role TEXT NOT NULL DEFAULT 'viewer' CHECK (role IN ('admin', 'asset_manager', 'viewer', 'employee', 'approver')),
       dingtalk_user_id TEXT UNIQUE,
       active INTEGER NOT NULL DEFAULT 1,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -186,4 +186,61 @@ export function migrate(db: DatabaseSync) {
   const eventColumns = db.prepare('PRAGMA table_info(asset_events)').all() as Array<{ name: string }>;
   if (!eventColumns.some((column) => column.name === 'flow_id')) db.exec('ALTER TABLE asset_events ADD COLUMN flow_id INTEGER REFERENCES asset_flows(id)');
   if (!eventColumns.some((column) => column.name === 'changes_json')) db.exec("ALTER TABLE asset_events ADD COLUMN changes_json TEXT NOT NULL DEFAULT '[]'");
+  const userSchema = String(db.prepare("SELECT sql FROM sqlite_master WHERE name = 'users'").get()?.sql);
+  if (!userSchema.includes("'employee'")) {
+    // Preserve IDs and referencing history while expanding the original CHECK constraint.
+    db.exec('PRAGMA foreign_keys = OFF; BEGIN IMMEDIATE');
+    try {
+      db.exec(`CREATE TABLE users_expanded (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL,
+        display_name TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'viewer' CHECK (role IN ('admin','asset_manager','viewer','employee','approver')),
+        dingtalk_user_id TEXT UNIQUE, active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+        INSERT INTO users_expanded SELECT id, username, password_hash, display_name, role, dingtalk_user_id, active, created_at, updated_at FROM users;
+        DROP TABLE users; ALTER TABLE users_expanded RENAME TO users; COMMIT;`);
+    } catch (error) { db.exec('ROLLBACK'); throw error; }
+    finally { db.exec('PRAGMA foreign_keys = ON'); }
+  }
+  const add = (table: string, column: string, type: string) => {
+    const columns = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+    if (!columns.some((c) => c.name === column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+  };
+  add('assets', 'version', 'INTEGER NOT NULL DEFAULT 1');
+  add('assets', 'assignee_employee_id', 'INTEGER REFERENCES employees(id)');
+  add('users', 'employee_id', 'INTEGER REFERENCES employees(id)');
+  add('employees', 'corp_id', "TEXT NOT NULL DEFAULT ''");
+  add('employees', 'union_id', 'TEXT');
+  add('employees', 'job_number', "TEXT NOT NULL DEFAULT ''");
+  add('employees', 'title', "TEXT NOT NULL DEFAULT ''");
+  add('employees', 'department_ids_json', "TEXT NOT NULL DEFAULT '[]'");
+  add('employees', 'active', 'INTEGER NOT NULL DEFAULT 1');
+  add('employees', 'missing_since', 'TEXT');
+  add('employees', 'synced_at', 'TEXT');
+  add('asset_flows', 'to_employee_id', 'INTEGER REFERENCES employees(id)');
+  add('asset_flow_items', 'expected_employee_id', 'INTEGER');
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_users_employee ON users(employee_id) WHERE employee_id IS NOT NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_employee_corp_user ON employees(corp_id, dingtalk_user_id);
+    CREATE INDEX IF NOT EXISTS idx_assets_employee ON assets(assignee_employee_id);
+    CREATE TRIGGER IF NOT EXISTS assets_version AFTER UPDATE ON assets WHEN NEW.version = OLD.version
+      BEGIN UPDATE assets SET version = OLD.version + 1 WHERE id = NEW.id; END;
+    CREATE TABLE IF NOT EXISTS asset_qr_aliases (
+      id INTEGER PRIMARY KEY, asset_id INTEGER NOT NULL REFERENCES assets(id), raw TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE(asset_id, raw));
+    CREATE TABLE IF NOT EXISTS import_previews (
+      id TEXT PRIMARY KEY, actor_id INTEGER NOT NULL, file_name TEXT NOT NULL, rows_json TEXT NOT NULL,
+      versions_json TEXT NOT NULL, expires_at INTEGER NOT NULL, result_json TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+    CREATE TABLE IF NOT EXISTS audit_logs (
+      id INTEGER PRIMARY KEY, actor_id INTEGER, actor_name TEXT NOT NULL, action TEXT NOT NULL,
+      target TEXT NOT NULL, details_json TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+    CREATE TABLE IF NOT EXISTS departments (
+      id INTEGER PRIMARY KEY, corp_id TEXT NOT NULL, dingtalk_id INTEGER NOT NULL, parent_id INTEGER,
+      name TEXT NOT NULL, synced_at TEXT NOT NULL, UNIQUE(corp_id, dingtalk_id));
+    CREATE TABLE IF NOT EXISTS directory_sync_runs (
+      id INTEGER PRIMARY KEY, actor_id INTEGER, status TEXT NOT NULL,
+      employees_count INTEGER NOT NULL DEFAULT 0, departments_count INTEGER NOT NULL DEFAULT 0,
+      message TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, completed_at TEXT);
+    CREATE TABLE IF NOT EXISTS system_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+  `);
 }

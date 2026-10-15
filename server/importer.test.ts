@@ -53,7 +53,7 @@ describe('asset workbook importer', () => {
 
   it('previews new, updated, unchanged, and invalid rows', () => {
     const db = openDatabase(':memory:');
-    db.prepare("INSERT INTO assets (asset_code, name, status, remark) VALUES ('CSJ-0431', '旧名称', '空闲', '保留')").run();
+    db.prepare("INSERT INTO assets (asset_code, name, status, remark, location) VALUES ('CSJ-0431', '旧名称', '空闲', '保留', '12楼')").run();
     const rows = parseWorkbook(workbookBuffer([
       row('CSJ-0431', { 资产名称: '新名称' }),
       row('CSJ-0432'),
@@ -67,7 +67,7 @@ describe('asset workbook importer', () => {
 
   it('does not erase stored remarks when the source cell is blank', () => {
     const db = openDatabase(':memory:');
-    db.prepare("INSERT INTO assets (asset_code, name, status, remark) VALUES ('CSJ-0431', '旧名称', '空闲', '保留')").run();
+    db.prepare("INSERT INTO assets (asset_code, name, status, remark, location) VALUES ('CSJ-0431', '旧名称', '空闲', '保留', '12楼')").run();
     const [incoming] = parseWorkbook(workbookBuffer([row('CSJ-0431', { 资产名称: '新名称', 备注: '' })]));
     applyImport(db, [incoming], 'batch-test');
     const stored = db.prepare("SELECT name, remark FROM assets WHERE asset_code = 'CSJ-0431'").get() as { name: string; remark: string };
@@ -75,7 +75,7 @@ describe('asset workbook importer', () => {
   });
   it('preserves existing amounts for blank cells but accepts an explicit zero', () => {
     const db = openDatabase(':memory:');
-    db.prepare("INSERT INTO assets (asset_code, name, amount_taxed) VALUES ('IMP-001', '电脑', 2999)").run();
+    db.prepare("INSERT INTO assets (asset_code, name, amount_taxed, location) VALUES ('IMP-001', '电脑', 2999, '12楼')").run();
     const blank = parseWorkbook(workbookBuffer([row('IMP-001', { '购置/租赁金额（含税）': '' })]));
     applyImport(db, blank, 'blank');
     expect(db.prepare("SELECT amount_taxed FROM assets WHERE asset_code = 'IMP-001'").get()?.amount_taxed).toBe(2999);

@@ -1,5 +1,7 @@
 export type Asset = {
   id: number;
+  version: number;
+  assignee_employee_id: number | null;
   asset_code: string;
   qr_raw: string;
   qr_format: string;
@@ -28,12 +30,13 @@ export type Asset = {
   events?: AssetEvent[];
 };
 
-export type AuthUser = { id: number; username: string; display_name: string; role: 'admin' | 'asset_manager' | 'viewer' };
+export type AuthUser = { id: number; username: string; display_name: string; role: 'admin' | 'asset_manager' | 'viewer' | 'employee' | 'approver'; employee_id?: number | null; department?: string };
 export type ManagedUser = AuthUser & { active: boolean; created_at: string };
 
 export type AssetUpdateInput = Pick<Asset, 'category_level1' | 'category_path' | 'name' | 'location' | 'company' | 'model' | 'cpu' | 'discrete_gpu' | 'memory' | 'gpu_model' | 'serial_number' | 'remark' | 'photo_url' | 'assignee' | 'department' | 'received_at' | 'amount_taxed' | 'amount_untaxed' | 'tax_amount'> & {
   operatorName?: string;
   note?: string;
+  expectedVersion?: number;
 };
 
 export type AssetEvent = {
@@ -75,7 +78,8 @@ export type ImportPreview = {
 export type ImportResponse = {
   batchId: string;
   fileName: string;
-  rows: Record<string, unknown>[];
+  expiresAt: number;
+  changes?: Array<{ assetCode: string; fields: Array<{ field: string; before: unknown; after: unknown }> }>;
   preview: ImportPreview;
   errors?: Array<{ row: number; assetCode: string; reason: string }>;
 };

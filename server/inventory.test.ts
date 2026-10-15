@@ -119,7 +119,7 @@ describe('inventory API', () => {
     expect(created.body.task.operator_name).toBe(admin.user.display_name);
     const scanned = await request(app).post(`/api/inventory/tasks/${created.body.task.id}/records`).set('Authorization', authorization).send({ assetCode: 'INV-001', operatorName: '冒用者' });
     expect(scanned.body.record.operator_name).toBe(admin.user.display_name);
-    const edited = await request(app).patch('/api/assets/INV-001').set('Authorization', authorization).send({ name: '新名称', operatorName: '冒用者' });
+    const edited = await request(app).patch('/api/assets/INV-001').set('Authorization', authorization).send({ name: '新名称', expectedVersion: 1, operatorName: '冒用者' });
     expect(edited.body.event.operator_name).toBe(admin.user.display_name);
     const moved = await request(app).post('/api/assets/INV-001/events').set('Authorization', authorization).send({ type: '调拨', toLocation: '16楼', operatorName: '冒用者' });
     expect(moved.status).toBe(409);

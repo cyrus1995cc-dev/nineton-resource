@@ -3,13 +3,14 @@ import { formatSystemTime } from '../dateTime';
 import { computed, nextTick, reactive, ref, watch } from 'vue';
 import { availableFlowTypes, flowTitles, type FlowType } from '../../../shared/flows';
 import type { Asset, AssetEvent, AssetUpdateInput } from '../types';
+import { assetEditFields, assetOwnershipFields } from '../../../shared/assets';
 
-const props = defineProps<{ asset: Asset | null; busy?: boolean; editBusy?: boolean; canWrite?: boolean }>();
+const props = defineProps<{ asset: Asset | null; busy?: boolean; editBusy?: boolean; canWrite?: boolean; canApply?: boolean; employeeOnly?: boolean }>();
 const emit = defineEmits<{
   close: [];
   event: [payload: { type: FlowType }];
   flow: [id: number];
-  update: [payload: AssetUpdateInput];
+  update: [payload: Partial<AssetUpdateInput>];
 }>();
 
 type Tab = 'basic' | 'usage' | 'events' | 'maintenance' | 'inventory';
@@ -26,7 +27,7 @@ const expanded = ref(true);
 const recordTab = ref('操作记录');
 const moreDialog = ref<HTMLDialogElement | null>(null);
 const showMore = ref(false);
-const actions = computed(() => props.asset ? availableFlowTypes(props.asset.status) : []);
+const actions = computed(() => props.asset ? availableFlowTypes(props.asset.status).filter((type) => !props.employeeOnly || ['领用', '归还', '交接', '维修', '报失'].includes(type)) : []);
 function eventChanges(event: AssetEvent) {
   if (event.changes?.length) return event.changes;
   return (['status', 'assignee', 'department', 'location'] as const).map((field) => ({ field, before: event[`from_${field}`] ?? '', after: event[`to_${field}`] ?? '' })).filter((c) => c.before !== c.after);
@@ -90,7 +91,8 @@ function cancelEditing() {
 
 function saveEditing() {
   if (!props.asset || props.canWrite === false || !form.name.trim()) return;
-  emit('update', { ...form, operatorName: '当前管理员' });
+  const changes = Object.fromEntries(assetEditFields.filter((field) => !(assetOwnershipFields as readonly string[]).includes(field) && String(form[field]) !== String(props.asset?.[field] ?? '')).map((field) => [field, form[field]]));
+  emit('update', { ...changes, expectedVersion: props.asset.version });
 }
 
 function tabEvents() {
@@ -139,7 +141,7 @@ function tabEvents() {
               <label class="field"><span>所在位置</span><input v-model="form.location" disabled /></label>
               <label class="field"><span>使用人</span><input v-model="form.assignee" disabled /></label>
               <label class="field"><span>使用部门</span><input v-model="form.department" disabled /></label>
-              <label class="field"><span>领用日期</span><input v-model="form.received_at" placeholder="YYYY-MM-DD" /></label>
+              <label class="field"><span>领用日期</span><input disabled v-model="form.received_at" placeholder="YYYY-MM-DD" /></label>
               <label class="field readonly-field"><span>当前状态</span><input :value="asset.status" disabled /></label>
             </div>
             <p class="flow-state-message">使用人、部门和位置通过交接或调拨申请变更，审批通过后生效。</p>
@@ -176,8 +178,8 @@ function tabEvents() {
             <div class="scan-changes"><p v-for="change in eventChanges(event)" :key="change.field">{{ fieldLabels[change.field] || change.field }}由“{{ change.before === '' ? '空' : change.before }}”变更为“{{ change.after === '' ? '空' : change.after }}”</p><p v-if="event.note" class="preserve-lines">{{ event.note }}</p></div>
           </section>
         </article>
-        <footer v-if="canWrite && actions.length" class="scan-bottom-actions"><button v-if="actions.includes('维修')" @click="launch('维修')"><span class="scan-action-symbol purple"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 6a5 5 0 0 0-6 6L3 17l4 4 5-5a5 5 0 0 0 6-6l-3 3-4-4 3-3Z" /></svg></span>故障报修</button><button v-if="actions.includes('交接')" @click="launch('交接')"><span class="scan-action-symbol orange"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h15m-4-4 4 4-4 4M20 17H5m4-4-4 4 4 4" /></svg></span>交接他人</button><button v-if="actions.includes('报失')" @click="launch('报失')"><span class="scan-action-symbol blue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="10" cy="10" r="6" /><path d="m14 14 6 6M10 7v4m0 2v1" /></svg></span>资产报失</button><button @click="openMore"><span class="scan-action-symbol gray"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg></span>更多</button></footer>
-        <p v-else-if="!canWrite" class="scan-readonly">当前账号为只读，可查看资产信息和记录。</p>
+        <footer v-if="canApply && actions.length" class="scan-bottom-actions"><button v-if="actions.includes('维修')" @click="launch('维修')"><span class="scan-action-symbol purple"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 6a5 5 0 0 0-6 6L3 17l4 4 5-5a5 5 0 0 0 6-6l-3 3-4-4 3-3Z" /></svg></span>故障报修</button><button v-if="actions.includes('交接')" @click="launch('交接')"><span class="scan-action-symbol orange"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h15m-4-4 4 4-4 4M20 17H5m4-4-4 4 4 4" /></svg></span>交接他人</button><button v-if="actions.includes('报失')" @click="launch('报失')"><span class="scan-action-symbol blue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="10" cy="10" r="6" /><path d="m14 14 6 6M10 7v4m0 2v1" /></svg></span>资产报失</button><button @click="openMore"><span class="scan-action-symbol gray"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg></span>更多</button></footer>
+        <p v-else-if="!canApply" class="scan-readonly">当前账号为只读，可查看资产信息和记录。</p>
       </template>
       <dialog v-if="showMore" ref="moreDialog" class="scan-more-dialog" aria-labelledby="scan-more-title" @cancel="showMore = false"><h3 id="scan-more-title">资产操作</h3><p class="muted">以下操作提交审批后生效。</p><div class="scan-more-grid"><button v-for="type in actions" :key="type" class="secondary-button" @click="launch(type)">{{ flowTitles[type] }}</button><button v-if="canWrite" class="secondary-button" @click="moreDialog?.close(); showMore = false; startEditing()">编辑资料</button></div><button class="secondary-button scan-more-cancel" @click="moreDialog?.close(); showMore = false">取消</button></dialog>
     </section>

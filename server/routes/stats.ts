@@ -4,6 +4,6 @@ import { getStats } from '../repositories/assets';
 
 export function createStatsRouter(db: DatabaseSync) {
   const router = Router();
-  router.get('/', (_req, res) => res.json(getStats(db)));
+  router.get('/', (req, res) => res.json(getStats(db, req.user)));
   return router;
 }
