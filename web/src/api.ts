@@ -1,6 +1,6 @@
 import type { Asset, AssetListResponse, AssetUpdateInput, AuthUser, ImportResponse, InventoryTask, InventoryTaskDetail, ManagedUser, Stats } from './types';
 import type { Employee, DirectoryStatus, EmployeeMapping } from './directory';
-import { createApiClient } from './apiClient';
+import { createApiClient, type DownloadFile } from './apiClient';
 import type { Flow, FlowDetail, FlowInput } from '../../shared/flows';
 
 const authToken = () => typeof localStorage === 'undefined' ? '' : localStorage.getItem('asset_token') ?? '';
@@ -13,6 +13,7 @@ const request = createApiClient({ baseUrl: apiBaseUrl, getToken: authToken, onSe
 } });
 
 export const api = {
+  download: (path: string) => request<DownloadFile>(path, {}, 'download'),
   login: async (username: string, password: string) => {
     const result = await request<{ token: string; user: AuthUser }>('/api/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) });
     localStorage.setItem('asset_token', result.token);

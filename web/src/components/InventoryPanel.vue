@@ -5,6 +5,7 @@ import { getAssetCodeFromScan } from '../qrLookup';
 import type { InventoryRecord, InventoryTask, InventoryTaskDetail } from '../types';
 import QrScanner from './QrScanner.vue';
 import { formatSystemTime } from '../dateTime';
+import ExportButton from './ExportButton.vue';
 
 const props = defineProps<{ locations: Array<{ name: string; count: number }>; canWrite: boolean }>();
 const emit = defineEmits<{ error: [message: string]; success: [message: string] }>();
@@ -89,6 +90,7 @@ onMounted(loadTasks);
 
 <template>
   <div class="inventory-workspace" :aria-busy="busy">
+    <details class="panel inventory-guide"><summary>盘点怎么做？查看操作步骤</summary><ol><li><strong>按位置建任务：</strong>例如“12楼季度盘点”，系统保存创建时的应盘清单。</li><li><strong>到现场扫码：</strong>使用安卓 App 扫描原有二维码，也可输入资产编码。填写当前实际楼层，再逐件登记；重复扫码不会重复计数。</li><li><strong>核对差异：</strong>搜索明细，检查待盘和位置差异。范围外资产会提示，可查询台账后另建任务。</li><li><strong>确认后结束：</strong>剩余待盘项记为“未盘到”，不代表已丢失。任务结束后不能继续登记。</li><li><strong>导出并处理：</strong>下载全部明细与差异清单；需要修改归属或位置时，核实后提交交接或调拨审批。</li></ol><p>当前为在线盘点，手机需要连接系统服务。建议首次先按一个楼层试盘，再扩大范围。</p></details>
     <div v-if="error" class="scan-error inventory-error" role="alert">{{ error }} <button class="text-button" :disabled="busy" @click="loadTasks">重新加载</button></div>
     <div class="inventory-layout">
       <article class="panel inventory-create">
@@ -114,10 +116,10 @@ onMounted(loadTasks);
             <div class="form-actions field-wide"><button class="primary-button" :disabled="busy || !scanText.trim()">{{ busy ? '处理中…' : '登记盘点' }}</button><button class="secondary-button" type="button" :disabled="busy" @click="requestComplete">结束盘点</button></div>
           </form>
           <QrScanner :disabled="busy" @scan="(value) => { scanText = value; scan(); }" />
-          <p class="inventory-help">位置差异会记入盘点结果；需要调整台账时，请在资产详情编辑或调拨。</p>
+          <p class="inventory-help">位置差异会记入盘点结果；需要调整台账时，请核实后提交调拨或交接审批。</p>
         </template>
         <p v-if="detail.task.status === 'completed'" class="inventory-help">任务已结束。“未盘到”计入差异，不计入实际已盘。</p>
-        <div class="inventory-records">
+        <div class="export-actions"><ExportButton :path="`/api/exports/inventory/${detail.task.id}`" :disabled="busy" label="导出盘点结果" description="导出该任务概况、全部明细和差异清单，不受下方明细筛选影响" @success="emit('success', $event)" @error="(message) => { error = message; }" /><span class="export-note">包含任务概况、全部明细、差异清单</span></div><div class="inventory-records">
           <div class="section-title"><h3>盘点明细</h3><span>{{ filtered.length }} / {{ detail.records.length }} 项</span></div>
           <div class="inventory-filters"><label class="field"><span>搜索明细</span><input v-model="search" type="search" placeholder="资产编码或名称" /></label><label class="field"><span>盘点结果</span><select v-model="resultFilter"><option value="">全部结果</option><option v-for="(label, value) in labels" :key="value" :value="value">{{ label }}</option></select></label></div>
           <div v-for="record in records" :key="record.id" class="inventory-record"><div><strong>{{ record.asset_code }} · {{ record.asset_name || '未命名资产' }}</strong><span>应在 {{ record.expected_location || '未设置' }} · {{ record.expected_status }}</span><span v-if="record.checked_at">实盘 {{ record.actual_location || '未设置' }} · {{ record.operator_name || '未记录操作人' }} · {{ formatSystemTime(record.checked_at) }}</span><span v-else-if="record.result === 'missing'">结束时未盘到 · {{ record.operator_name || '未记录操作人' }}</span><span v-if="record.note">备注：{{ record.note }}</span></div><span class="inventory-result" :class="`result-${record.result}`">{{ labels[record.result] }}</span></div>

@@ -256,4 +256,12 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 }
 
 .user-search { margin-bottom: 16px; }
+.export-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; white-space: nowrap; }
+.export-button svg { width: 20px; height: 20px; flex-shrink: 0; }
+.export-actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.export-note { color: #617389; font-size: 13px; line-height: 1.7; }
+.inventory-guide { padding: 16px 24px; margin-bottom: 24px; color: #475b73; line-height: 1.8; }
+.inventory-guide summary { cursor: pointer; font-weight: 600; min-height: 44px; display: list-item; align-content: center; }
+.inventory-guide ol { padding-left: 24px; margin: 12px 0; }.inventory-guide li { margin: 12px 0; }.inventory-guide p { margin: 12px 0; }
+@media (max-width: 760px) { .export-actions { width: 100%; }.inventory-guide { padding: 12px 18px; }.flow-list-panel .panel-header { flex-wrap: wrap; gap: 12px; } }
 .directory-row button, .directory-config button, .user-permissions button, .user-permissions select { min-height: 44px; }

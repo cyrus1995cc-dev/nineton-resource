@@ -39,4 +39,16 @@ describe('authenticated API transport', () => {
     await expect(request('/api/assets')).rejects.toThrow('登录状态已变更');
     expect(expired).not.toHaveBeenCalled();
   });
+  it('downloads authenticated Excel bytes with a decoded filename and reports API errors', async () => {
+    const filename = '资产清单-20261015.xlsx';
+    const fetchMock = vi.fn().mockResolvedValueOnce(new Response('excel', { headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(filename)}` } }))
+      .mockResolvedValueOnce(Response.json({ message: '没有权限' }, { status: 403 }))
+      .mockResolvedValueOnce(Response.json({ notAWorkbook: true }));
+    const request = createApiClient({ getToken: () => 'session', onSessionExpired: vi.fn(), fetch: fetchMock });
+    const file = await request<import('./apiClient').DownloadFile>('/api/exports/assets', {}, 'download');
+    expect(file.filename).toBe(filename); expect(await file.blob.text()).toBe('excel');
+    expect(new Headers(fetchMock.mock.calls[0][1].headers).get('Authorization')).toBe('Bearer session');
+    await expect(request('/api/exports/assets', {}, 'download')).rejects.toMatchObject({ message: '没有权限', status: 403 });
+    await expect(request('/api/exports/assets', {}, 'download')).rejects.toThrow('未返回 Excel');
+  });
 });

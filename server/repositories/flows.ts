@@ -52,7 +52,8 @@ export function getFlow(db: DatabaseSync, id: number): FlowDetail {
     notifications: db.prepare('SELECT id, kind, recipient_name, status, created_at FROM notification_outbox WHERE flow_id = ? ORDER BY id').all(id) as FlowDetail['notifications'],
   };
 }
-export function listFlows(db: DatabaseSync, actor: AuthUser, params: { scope?: string; status?: string; search?: string; page?: number }) {
+export type FlowFilters = { scope?: string; status?: string; search?: string };
+export function flowQuery(actor: AuthUser, params: FlowFilters) {
   const where: string[] = []; const values: (string | number)[] = [];
   if (restrictedUser(actor)) { where.push('(f.applicant_id = ? OR EXISTS (SELECT 1 FROM asset_flow_steps s WHERE s.flow_id = f.id AND s.approver_id = ?) OR f.to_employee_id = ?)'); values.push(actor.id, actor.id, actor.employee_id ?? -1); }
   if (params.scope === 'todo') {
@@ -64,6 +65,10 @@ export function listFlows(db: DatabaseSync, actor: AuthUser, params: { scope?: s
     values.push(...Array(4).fill(`%${params.search.slice(0, 200)}%`));
   }
   const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  return { clause, values };
+}
+export function listFlows(db: DatabaseSync, actor: AuthUser, params: FlowFilters & { page?: number }) {
+  const { clause, values } = flowQuery(actor, params);
   const page = integer(params.page, '页码', 1, 1000000); const pageSize = 20;
   const total = Number((db.prepare(`SELECT COUNT(*) AS n FROM asset_flows f ${clause}`).get(...values) as { n: number }).n);
   const items = db.prepare(`SELECT f.*, (SELECT COUNT(*) FROM asset_flow_items WHERE flow_id = f.id) AS asset_count

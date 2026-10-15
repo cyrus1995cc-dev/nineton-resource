@@ -1,6 +1,7 @@
 export class ApiError extends Error {
   constructor(message: string, public status: number) { super(message); }
 }
+export type DownloadFile = { blob: Blob; filename: string };
 
 export function createApiClient(options: {
   baseUrl?: string;
@@ -8,7 +9,7 @@ export function createApiClient(options: {
   onSessionExpired: () => void;
   fetch?: typeof fetch;
 }) {
-  return async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  return async function request<T>(path: string, init: RequestInit = {}, responseType: 'json' | 'download' = 'json'): Promise<T> {
     const token = options.getToken();
     const headers = new Headers(init.headers);
     if (token) headers.set('Authorization', `Bearer ${token}`);
@@ -22,6 +23,15 @@ export function createApiClient(options: {
     if (token && !publicPath && token !== options.getToken()) throw new ApiError('登录状态已变更，请重新操作', 0);
     if (response.status === 401 && token && !publicPath) options.onSessionExpired();
     if (response.status === 204) return undefined as T;
+    if (response.ok && responseType === 'download') {
+      if (!response.headers.get('Content-Type')?.includes('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')) throw new ApiError('服务器未返回 Excel 文件，请稍后重试', response.status);
+      let filename = '资产导出.xlsx';
+      const encoded = response.headers.get('Content-Disposition')?.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+      if (encoded) { try { filename = decodeURIComponent(encoded).replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_'); } catch { /* keep the default name */ } }
+      const blob = await response.blob();
+      if (token !== options.getToken()) throw new ApiError('登录状态已变更，请重新操作', 0);
+      return { blob, filename } as T;
+    }
     const payload = await response.json().catch(() => null);
     if (!response.ok) throw new ApiError(payload?.message ?? `请求失败（${response.status}）`, response.status);
     if (payload === null) throw new ApiError('服务器返回了无法识别的内容，请稍后重试', response.status);

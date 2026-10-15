@@ -16,6 +16,7 @@ import { requireAuth, requireRole } from './middleware/auth';
 import { AppError } from './errors';
 import { createDirectoryRouter } from './routes/directory';
 import { startDirectoryScheduler } from './repositories/directory';
+import { createExportRouter } from './routes/exports';
 
 export function createApp(options: { db?: DatabaseSync; auth?: boolean } = {}) {
   const app = express();
@@ -38,6 +39,7 @@ export function createApp(options: { db?: DatabaseSync; auth?: boolean } = {}) {
   app.use('/api/inventory', requireRole('admin', 'asset_manager', 'viewer'), createInventoryRouter(db));
   app.use('/api/flows', createFlowRouter(db));
   app.use('/api/directory', createDirectoryRouter(db));
+  app.use('/api/exports', createExportRouter(db));
   if (!options.db) startDirectoryScheduler(db);
 
   const distPath = join(process.cwd(), 'dist');

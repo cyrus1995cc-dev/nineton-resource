@@ -5,12 +5,14 @@ import type { Asset, AuthUser } from '../types';
 import { availableFlowTypes, flowStatusLabels, flowTitles, flowTypes, type Flow, type FlowDetail, type FlowInput, type FlowType } from '../../../shared/flows';
 import type { Employee } from '../directory';
 import { formatSystemTime } from '../dateTime';
+import ExportButton from './ExportButton.vue';
 
 const props = defineProps<{ user: AuthUser; canWrite: boolean; draft?: { asset: Asset; type: FlowType; nonce: number } | null; initialId?: number | null }>();
 const emit = defineEmits<{ changed: []; success: [message: string]; settings: [] }>();
 const employeeOnly = computed(() => ['employee', 'approver'].includes(props.user.role));
 const employees = ref<Employee[]>([]);
 const scope = ref('all'); const status = ref(''); const search = ref(''); const page = ref(1);
+const exportPath = computed(() => `/api/exports/flows?${new URLSearchParams({ scope: scope.value, status: status.value, search: search.value })}`);
 const flows = ref<Flow[]>([]); const total = ref(0); const loading = ref(false); const busy = ref(false); const error = ref('');
 const detail = ref<FlowDetail | null>(null); const approvers = ref<AuthUser[]>([]); const opinion = ref(''); const comment = ref('');
 const dialog = ref<HTMLDialogElement | null>(null); const creating = ref(false); const draftAssets = ref<Asset[]>([]);
@@ -87,8 +89,8 @@ onMounted(() => { void loadList(); if (props.initialId) void openFlow(props.init
   <div class="flow-workspace">
     <div v-if="error && !creating" class="scan-error" role="alert">{{ error }}</div>
     <article v-if="!detail" class="panel flow-list-panel">
-      <div class="panel-header"><div><span class="eyebrow">申请与审批</span><h2>资产流转记录</h2></div><button v-if="canWrite" class="primary-button" @click="startDraft()">发起申请</button></div>
-      <nav class="flow-tabs" aria-label="流转范围"><button v-for="item in [{ id: 'all', label: employeeOnly ? '与我相关' : '全部单据' }, { id: 'todo', label: '我的待办' }, { id: 'mine', label: '我发起的' }]" :key="item.id" :class="{ active: scope === item.id }" @click="scope = item.id; filterList()">{{ item.label }}</button></nav>
+      <div class="panel-header"><div><span class="eyebrow">申请与审批</span><h2>资产流转记录</h2></div><div class="export-actions"><ExportButton :path="exportPath" :disabled="loading" @success="emit('success', $event)" @error="(message) => { error = message; }" /><button v-if="canWrite" class="primary-button" @click="startDraft()">发起申请</button></div></div>
+      <p class="export-note">导出包含筛选后的全部单据、资产明细、审批步骤和处理记录。</p><nav class="flow-tabs" aria-label="流转范围"><button v-for="item in [{ id: 'all', label: employeeOnly ? '与我相关' : '全部单据' }, { id: 'todo', label: '我的待办' }, { id: 'mine', label: '我发起的' }]" :key="item.id" :class="{ active: scope === item.id }" @click="scope = item.id; filterList()">{{ item.label }}</button></nav>
       <form class="flow-filters" @submit.prevent="filterList"><label class="field"><span>搜索单据或资产</span><input v-model="search" placeholder="单号、申请人、资产编码或名称" /></label><label class="field"><span>审批状态</span><select v-model="status" @change="filterList"><option value="">全部状态</option><option v-for="(label, key) in flowStatusLabels" :key="key" :value="key">{{ label }}</option></select></label><button class="secondary-button" :disabled="loading">{{ loading ? '加载中…' : '搜索' }}</button></form>
       <p v-if="loading" class="muted" role="status">正在加载单据…</p>
       <div v-else-if="!flows.length" class="empty-history">暂无单据{{ scope === 'todo' ? '待你审批' : '' }}<p>发起申请后，可在这里查看审批进度和处理结果。</p></div>

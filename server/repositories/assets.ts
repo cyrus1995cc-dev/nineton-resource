@@ -62,7 +62,8 @@ function mapAsset(row: Record<string, unknown> | undefined) {
   return Object.fromEntries(editableFields.map((field) => [field, row[field] ?? (field === 'assignee_employee_id' ? null : '')]));
 }
 
-export function listAssets(db: DatabaseSync, params: { search?: string; status?: string; category?: string; location?: string; page?: number; pageSize?: number; scope?: string }, actor?: AuthUser) {
+export type AssetFilters = { search?: string; status?: string; category?: string; location?: string; scope?: string };
+export function assetQuery(params: AssetFilters, actor?: AuthUser) {
   const where: string[] = [];
   const values: (string | number)[] = [];
   const scope = params.scope === 'mine' ? { clause: 'assignee_employee_id = ?', values: [actor?.employee_id ?? -1] } : assetScope(actor, params.scope === 'available');
@@ -76,6 +77,11 @@ export function listAssets(db: DatabaseSync, params: { search?: string; status?:
   if (params.category) { where.push('category_path = ?'); values.push(params.category); }
   if (params.location) { where.push('location = ?'); values.push(params.location); }
   const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  return { clause, values };
+}
+
+export function listAssets(db: DatabaseSync, params: AssetFilters & { page?: number; pageSize?: number }, actor?: AuthUser) {
+  const { clause, values } = assetQuery(params, actor);
   const page = integer(params.page, '页码', 1, 1000000);
   const pageSize = integer(params.pageSize, '每页条数', 20, 100);
   const total = Number((db.prepare(`SELECT COUNT(*) AS count FROM assets ${clause}`).get(...values) as { count: number }).count);
