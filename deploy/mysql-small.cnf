@@ -1,0 +1,19 @@
+# Starting values for a shared 2-vCPU / 2-GiB Linux server, not a capacity guarantee.
+# Install as /etc/mysql/mysql.conf.d/asset-small.cnf and check actual memory under load.
+[mysqld]
+bind-address=127.0.0.1
+mysqlx=OFF
+character-set-server=utf8mb4
+collation-server=utf8mb4_0900_bin
+default-time-zone=+00:00
+innodb-buffer-pool-size=256M
+max-connections=30
+table-open-cache=256
+temptable-max-ram=64M
+tmp-table-size=16M
+max-heap-table-size=16M
+innodb-redo-log-capacity=128M
+# Keep transaction durability enabled.
+innodb-flush-log-at-trx-commit=1
+sync-binlog=1
+binlog-expire-logs-seconds=604800

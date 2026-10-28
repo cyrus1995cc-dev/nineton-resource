@@ -1,0 +1,26 @@
+[Unit]
+Description=Asset management Go API
+After=network-online.target mysql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=asset-system
+Group=asset-system
+WorkingDirectory=/opt/asset-system
+EnvironmentFile=/etc/asset-system.env
+ExecStart=/opt/asset-system/asset-server
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+UMask=0077
+MemoryHigh=448M
+MemoryMax=640M
+TasksMax=128
+
+[Install]
+WantedBy=multi-user.target

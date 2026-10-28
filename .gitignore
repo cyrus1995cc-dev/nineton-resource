@@ -5,3 +5,16 @@ dist/
 *.db-shm
 *.db-wal
 .env
+*.env
+.env.*
+!*.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+release/
+backend/bin/
+*.exe
+*.test

@@ -1,0 +1,39 @@
+{
+  "name": "asset-system-legacy-node",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx index.ts",
+    "test": "vitest run",
+    "import": "tsx scripts/import-workbook.ts",
+    "verify:seed": "tsx scripts/verify-seed.ts"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.4.3",
+    "@capacitor/camera": "^7.0.2",
+    "@capacitor/core": "^7.4.3",
+    "@zxing/browser": "^0.1.5",
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "multer": "^2.0.2",
+    "vue": "^3.5.22",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^7.4.3",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.3",
+    "@types/multer": "^2.0.0",
+    "@types/node": "^24.7.2",
+    "@types/supertest": "^6.0.3",
+    "@vitejs/plugin-vue": "^6.0.1",
+    "concurrently": "9.2.5",
+    "supertest": "^7.1.4",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.9",
+    "vitest": "4.1.11",
+    "vue-tsc": "^3.3.13"
+  }
+}

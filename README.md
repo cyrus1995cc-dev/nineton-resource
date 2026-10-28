@@ -3,6 +3,8 @@
 当前版本可在本地和局域网运行，包含：
 
 - Web 资产看板和清单
+- 资产状态切换、搜索范围和公司/部门/分类/位置组合筛选
+- 固定编码及操作列、自定义显示列、密度与分页偏好、跨页勾选和批量流转
 - Excel 资产导入预览与确认
 - Excel 资产清单、流转记录和盘点结果导出
 - 资产详情和流转时间线
@@ -15,35 +17,68 @@
 - 实际登录人操作记录、重复扫码保护与保存失败回滚
 - Android 友好的响应式页面基础
 - 钉钉员工与部门同步、旧台账人员核对关联、我的资产
+- 公司手工新增与修改、上下级关系、搜索及钉钉部门可选绑定
+- 钉钉组织树、员工多部门与公司关系、后台同步进度和错误记录
 - 普通员工和指定审批人权限、账号角色调整与停用
 - 编辑版本检查、导入防重与逐项履历、旧二维码原文保护
 
-## 本地运行
+资产清单的筛选、显示列、跨页批量操作与验收说明见 [资产清单优化](docs/资产清单优化-2026-10-28.md)。
 
-```powershell
-npm install --registry=https://registry.npmmirror.com
-npm run import -- "C:\Users\张洋华\Downloads\资产清单2026-10-08.xlsx"
-npm run verify:seed
-npm run dev
+## 当前架构与目录
+
+2026-10-27 起采用 Vue 前端 + Go 后端 + MySQL 8.4，按 2 核 2 GiB Linux 服务器起步配置。容量仍需在目标服务器验收。
+
+```text
+frontend/               Vue 页面、样式、前端依赖与构建
+  src/                  页面与组件
+  shared/               前端类型、状态与二维码规则
+  android/              Capacitor 安卓工程
+  dist/                 构建后的静态文件（忽略提交）
+backend/
+  cmd/server/           Go API 入口
+  cmd/migrate/          建表与 SQLite → MySQL 迁移工具
+  internal/app/         业务、SQL、接口、测试
+  legacy-node/          原 Node/SQLite 后端，作核对参考
+deploy/                 Nginx、systemd、MySQL 小内存配置和部署说明
+scripts/                本地发布构建脚本
+release/linux-amd64/    Linux 发布包（生成后存在，忽略提交）
+.data/                  旧 SQLite 与本地验证数据，保留原位
 ```
 
-浏览器打开终端显示的 Vite 地址（默认 `http://localhost:5173`，端口被占用时自动递增；当前本机为 `http://localhost:5174`）。开发 API 运行在 `http://localhost:3000`，Vite 会代理 `/api` 请求。
+## 本地运行
 
-首次初始化使用 `admin / admin123`。新建数据库前可设置 `ASSET_ADMIN_PASSWORD`（也可以设置 `ASSET_ADMIN_USERNAME`）；环境变量不会更改已有账号密码。管理员可在“系统设置”创建账号、调整角色和停用账号；权限调整会撤销旧会话。未登录请求不会读取资产数据。密码重置和登录失败限流尚未实现。
+先准备独立的 MySQL 开发库，使用升级账号建表。已有 SQLite 数据通过迁移工具复制到空 MySQL 库，原 SQLite 始终只读。
+
+```powershell
+npm --prefix frontend ci
+$env:MYSQL_DSN='asset_dev:password@tcp(127.0.0.1:3306)/asset_system_dev'
+go -C backend run ./cmd/migrate
+$env:ASSET_ADMIN_PASSWORD='至少十二位的首次管理员密码'
+go -C backend run ./cmd/server
+# 另开终端
+npm --prefix frontend run dev
+```
+
+前端默认 `http://localhost:5173`，开发代理 `/api` 至 `127.0.0.1:3000`。Go 服务默认只监听回环地址；局域网开发时设置 `LISTEN_ADDR=0.0.0.0:3000`。
+
+新库首次初始化必须设置管理员密码，已有账号密码原样保留。正式员工钉钉统一登录和消息真实发送仍须企业联调。完整部署、迁移、备份及恢复流程见 [部署说明](deploy/README.md)。
+
+生产环境部署编译后的 Go 程序与前端静态文件，无需安装 Node.js、npm 或 Go 编译器。
 
 ## Android APK
 
-安卓 APK 使用构建时的 `VITE_API_BASE_URL` 连接电脑上的 API。手机和电脑需要在同一局域网，先让后端监听 `0.0.0.0`，再把电脑局域网 IP 写入构建参数：
+安卓 APK 使用构建时的 `VITE_API_BASE_URL` 连接电脑上的 API。手机和电脑需要在同一局域网，先让 Go 后端监听 `0.0.0.0`，再把电脑局域网 IP 写入构建参数。安卓工程已移至 `frontend/android/`：
 
 ```powershell
 $env:VITE_API_BASE_URL="http://192.168.1.100:3000"
+$env:LISTEN_ADDR="0.0.0.0:3000"
 npm run android:sync
-Push-Location android
+Push-Location frontend/android
 gradle assembleDebug
 Pop-Location
 ```
 
-生成文件：`android/app/build/outputs/apk/debug/app-debug.apk`。如果只是浏览器本地开发，不设置该变量即可，Vite 会继续代理 `/api` 到 `localhost:3000`。
+生成文件：`frontend/android/app/build/outputs/apk/debug/app-debug.apk`。如果只是浏览器本地开发，不设置该变量即可，Vite 会继续代理 `/api` 到 `localhost:3000`。
 
 钉钉企业通讯录同步及已有登录适配需要配置以下环境变量后重启后端：
 
@@ -53,7 +88,9 @@ $env:DINGTALK_CLIENT_SECRET="你的AppSecret"
 $env:DINGTALK_CORP_ID="你的CorpId"
 ```
 
-在钉钉后台为企业内部应用申请通讯录部门信息和部门成员读权限，并设置授权范围。在“系统设置 → 员工与部门”填写可访问的起始部门编号，执行“立即同步”。默认仅手动同步，可设为每 30 分钟、每小时、每 6 小时或每天同步。同步失败保留原通讯录；成功同步后未再读到的员工标为“授权范围待核对”，暂停关联账号访问，不直接认定离职。
+在钉钉后台为企业内部应用申请通讯录部门信息和部门成员读权限，并设置授权范围。在“组织与人员 → 同步设置与记录”填写可访问的起始部门编号，执行“立即同步”。同步在后台执行，离开页面后继续；返回页面可查看状态。默认仅手动同步，可设为每 30 分钟、每小时、每 6 小时或每天同步。同步失败保留原通讯录；成功同步后未再读到的员工标为“授权范围待核对”，暂停关联账号访问，不直接认定离职。
+
+“公司管理”由管理员手工维护，钉钉同步不会新增或覆盖公司资料。公司可绑定一个钉钉部门，绑定关系向下级部门继承，更近的公司绑定优先；未命中的部门可指定默认公司或保持未分配。员工在多个部门的关系完整保留。公司改名保留历史台账文字和公司旧名称关联。详见 [公司与钉钉通讯录使用说明](docs/公司与钉钉通讯录-2026-10-28.md)。
 
 首次同步建立普通员工账号，不生成可本地登录的密码。登录身份必须匹配已同步的本企业有效员工，不能仅凭姓名或 unionId 自动加入企业。旧台账只有姓名，需在“旧台账关联”结合部门、工号逐项核对，不会自动把重名人员关联。
 
@@ -66,14 +103,18 @@ $env:DINGTALK_CORP_ID="你的CorpId"
 ## 测试和构建
 
 ```powershell
-npm test
-npm run typecheck
-npm run build
+npm --prefix frontend test
+npm --prefix frontend run typecheck
+npm --prefix frontend run build
+$env:ASSET_TEST_MYSQL_DSN="test_user:password@tcp(127.0.0.1:3306)/asset_system_test"
+go -C backend test ./... -count=1
+go -C backend vet ./...
+.\scripts\build-release.ps1
 ```
 
 ## 数据和二维码
 
-运行时数据库位于 `.data/asset.db`，不会提交到 Git。二维码只在系统内部解析为字符串，旧公贝云二维码的原文保存在 `qr_raw` 字段中，客户端不会自动打开该 URL。
+当前 Go 后端使用 `MYSQL_DSN` 指定的 MySQL 数据库。旧 `.data/asset.db` 留作迁移源与回退材料，不会提交到 Git；迁移不会自动切换或覆盖原数据。二维码只在系统内部解析为字符串，旧公贝云二维码的原文保存在 `qr_raw` 字段中，客户端不会自动打开该 URL。
 
 已有非空二维码原文固定保留；后续扫到同一资产的不同内容单独记录别名，不覆盖原标签内容。手工输入编码查询不会覆盖原文；只读账号扫码只查询详情。扫码库在打开摄像头时加载，关闭扫描、离开页面或切到后台时释放相机。
 
@@ -85,7 +126,8 @@ npm run build
 
 ### Excel 导出
 
-- “资产清单”“我的资产”按当前搜索、状态、位置和查看范围导出全部可见资产，不限当前页；保留原导入表头、金额数值和二维码原文。
+- “资产清单”“我的资产”按已应用的搜索、状态、公司、部门、分类、位置、排序和查看范围导出全部可见资产，不限当前页；保留原导入表头、金额数值和二维码原文。
+- 勾选后可“导出所选”，支持跨页选择，每次最多 100 项；所选导出仍遵守当前账号的查看权限。
 - “资产流转”按当前搜索、审批状态及查看范围导出单据、资产快照、审批步骤和处理记录。
 - “资产盘点”选择任务后点击“导出盘点结果”，包含任务概况、全部明细和差异清单；不受下方明细筛选影响。
 

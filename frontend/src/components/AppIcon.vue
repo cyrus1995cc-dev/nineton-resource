@@ -1,0 +1,24 @@
+<script setup lang="ts">
+withDefaults(defineProps<{ name: string; size?: number }>(), { size: 18 });
+const paths: Record<string, string> = {
+  home: 'm3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-8H9v8H4a1 1 0 0 1-1-1z',
+  box: 'm3 7 9-4 9 4v10l-9 4-9-4z M3 7l9 4 9-4 M12 11v10 M7 5l10 4',
+  list: 'M8 5h13M8 12h13M8 19h13M3 5h.01M3 12h.01M3 19h.01',
+  search: 'M21 21l-5-5 M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0',
+  scan: 'M8 3H3v5M16 3h5v5M21 16v5h-5M8 21H3v-5M7 12h10M8 8h8M8 16h8',
+  flow: 'M4 7h15l-4-4M20 17H5l4 4M4 7v4M20 17v-4',
+  check: 'm5 12 4 4L19 6',
+  building: 'M4 21V3h12v18M16 9h4v12M2 21h20M8 7h4M8 11h4M8 15h4M8 19h4',
+  users: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M13 3a4 4 0 0 1 0 8M22 21v-2a4 4 0 0 0-3-3.87 M13 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0',
+  settings: 'M4 7h16M4 17h16M8 4v6M16 14v6',
+  refresh: 'M20 7v5h-5M4 17v-5h5 M5.5 7a7 7 0 0 1 12-2L20 8 M18.5 17a7 7 0 0 1-12 2L4 16',
+  filter: 'M3 4h18l-7 8v6l-4 2v-8z',
+  columns: 'M3 4h18v16H3zM10 4v16M16 4v16',
+  download: 'M12 3v12m-4-4 4 4 4-4M4 16v4h16v-4',
+  upload: 'M12 16V4m-4 4 4-4 4 4M4 17v3h16v-3',
+  chevron: 'm9 5 7 7-7 7',
+  close: 'm6 6 12 12M6 18 18 6',
+  expand: 'M8 3H3v5M16 3h5v5M21 16v5h-5M8 21H3v-5',
+};
+</script>
+<template><svg :width="size" :height="size" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path :d="paths[name] || paths.box" /></svg></template>
