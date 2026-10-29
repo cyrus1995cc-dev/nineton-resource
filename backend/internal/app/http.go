@@ -19,7 +19,7 @@ import (
 	"github.com/go-sql-driver/mysql"
 )
 
-type Config struct{ FrontendDir, AdminUsername, AdminPassword, DingID, DingSecret, DingCorp, DingAPI, DingOAPI, DingTokenURL, DingUserURL, AllowedOrigin string }
+type Config struct{ FrontendDir, AdminUsername, AdminPassword, DingID, DingSecret, DingCorp, DingAPI, DingOAPI, AllowedOrigin string }
 type App struct {
 	DB         *sql.DB
 	Config     Config
@@ -177,7 +177,7 @@ func (a *App) routes() {
 		w.WriteHeader(204)
 	})
 	m.HandleFunc("GET /api/auth/dingtalk/config", func(w http.ResponseWriter, r *http.Request) {
-		send(w, 200, Row{"enabled": a.dingConfigured(), "corpId": a.Config.DingCorp})
+		send(w, 200, Row{"enabled": a.dingConfigured(), "corpId": a.Config.DingCorp, "clientId": a.Config.DingID})
 	})
 	m.HandleFunc("POST /api/auth/dingtalk/login", a.dingLogin)
 	m.HandleFunc("GET /api/auth/users", a.users)

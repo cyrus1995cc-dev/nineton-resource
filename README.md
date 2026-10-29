@@ -94,7 +94,7 @@ $env:DINGTALK_CORP_ID="你的CorpId"
 
 首次同步建立普通员工账号，不生成可本地登录的密码。登录身份必须匹配已同步的本企业有效员工，不能仅凭姓名或 unionId 自动加入企业。旧台账只有姓名，需在“旧台账关联”结合部门、工号逐项核对，不会自动把重名人员关联。
 
-现有钉钉登录适配调用 `https://api.dingtalk.com/v1.0/oauth2/userAccessToken` 和 `https://api.dingtalk.com/v1.0/contact/userinfo`，支持 `DINGTALK_TOKEN_URL`、`DINGTALK_USER_URL` 覆盖。Web、Android 和钉钉 H5 的授权入口、SDK 及企业应用配置仍须分别联调，不能仅配置上述变量就视为登录已打通。配置与使用详见 [员工通讯录与数据保护](docs/员工通讯录与数据保护-2026-10-15.md)。
+钉钉工作台免登按需加载官方 SDK，使用 CorpId 和公开的 ClientId 获取一次性免登码；服务端使用企业应用 accessToken 调用 `/topapi/v2/user/getuserinfo`，按 CorpId + userid 关联已同步员工并建立会话。普通浏览器保留本地维护账号，浏览器 OAuth 与独立 Android 钉钉登录仍需单独接入。配置、权限与真实企业验收见 [钉钉联调配置](docs/钉钉联调配置-2026-10-29.md)。
 
 ### 已确认的后续登录方式（2026-10-15）
 

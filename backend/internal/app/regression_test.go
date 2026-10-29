@@ -87,10 +87,11 @@ func TestMySQLDirectoryAndEmployeeScope(t *testing.T) {
 				people = people[1:]
 			}
 			send(w, 200, Row{"errcode": 0, "result": Row{"list": people, "has_more": false}})
-		case "/v1.0/oauth2/userAccessToken":
-			send(w, 200, Row{"accessToken": "user-token"})
-		case "/v1.0/contact/userinfo":
-			send(w, 200, Row{"unionId": "union-1", "nick": "同名"})
+		case "/topapi/v2/user/getuserinfo":
+			if r.URL.Query().Get("access_token") != "app-token" || body(r)["code"] != "authorization-code" {
+				t.Error("H5 code must be exchanged with the enterprise app token")
+			}
+			send(w, 200, Row{"errcode": 0, "result": Row{"userid": "emp-1", "unionid": "union-1"}})
 		default:
 			http.NotFound(w, r)
 		}

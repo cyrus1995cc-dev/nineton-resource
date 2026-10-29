@@ -33,7 +33,7 @@ func main() {
 		os.Exit(1)
 	}
 	defer db.Close()
-	cfg := app.Config{FrontendDir: os.Getenv("FRONTEND_DIR"), AdminUsername: os.Getenv("ASSET_ADMIN_USERNAME"), AdminPassword: os.Getenv("ASSET_ADMIN_PASSWORD"), DingID: os.Getenv("DINGTALK_CLIENT_ID"), DingSecret: os.Getenv("DINGTALK_CLIENT_SECRET"), DingCorp: os.Getenv("DINGTALK_CORP_ID"), DingTokenURL: os.Getenv("DINGTALK_TOKEN_URL"), DingUserURL: os.Getenv("DINGTALK_USER_URL"), AllowedOrigin: os.Getenv("ALLOWED_ORIGIN")}
+	cfg := app.Config{FrontendDir: os.Getenv("FRONTEND_DIR"), AdminUsername: os.Getenv("ASSET_ADMIN_USERNAME"), AdminPassword: os.Getenv("ASSET_ADMIN_PASSWORD"), DingID: os.Getenv("DINGTALK_CLIENT_ID"), DingSecret: os.Getenv("DINGTALK_CLIENT_SECRET"), DingCorp: os.Getenv("DINGTALK_CORP_ID"), AllowedOrigin: os.Getenv("ALLOWED_ORIGIN")}
 	a := app.New(db, cfg)
 	if os.Getenv("MIGRATE_ON_START") == "1" {
 		if e = app.Migrate(context.Background(), db); e != nil {

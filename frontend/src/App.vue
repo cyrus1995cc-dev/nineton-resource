@@ -34,6 +34,7 @@ const importBusy = ref(false);
 const editBusy = ref(false);
 const toast = ref('');
 const currentUser = ref<AuthUser | null>(null);
+const autoDingTalkLogin = ref(true);
 const authReady = ref(false);
 const users = ref<ManagedUser[]>([]);
 const userBusy = ref(false);
@@ -79,7 +80,7 @@ function resetSession() {
   importPreview.value = null; users.value = []; error.value = ''; toast.value = ''; authFailure.value = '';
   if (toastTimer) clearTimeout(toastTimer);
 }
-async function logout() { await api.logout(); resetSession(); }
+async function logout() { await api.logout(); autoDingTalkLogin.value = false; resetSession(); }
 function returnToLogin() { localStorage.removeItem('asset_token'); resetSession(); }
 async function createUser(payload: { username: string; password: string; display_name: string; role: ManagedUser['role'] }) {
   userBusy.value = true;
@@ -141,7 +142,7 @@ onBeforeUnmount(() => { window.removeEventListener(SESSION_EXPIRED_EVENT, resetS
 
 <template>
   <div v-if="!authReady || authFailure" class="login-shell"><div class="login-card"><h1>{{ authFailure ? '连接暂时不可用' : '正在加载…' }}</h1><p class="login-intro" role="status">{{ authFailure || '正在检查登录状态' }}</p><div v-if="authFailure" class="form-actions"><button class="primary-button" @click="bootstrapAuth">重新连接</button><button class="secondary-button" @click="returnToLogin">返回登录</button></div></div></div>
-  <LoginView v-else-if="!currentUser" @logged-in="onLoggedIn" />
+  <LoginView v-else-if="!currentUser" :auto-ding-talk-login="autoDingTalkLogin" @logged-in="onLoggedIn" />
   <div v-else-if="authReady" class="app-shell" :class="{ 'asset-mode': ['assets', 'my-assets'].includes(activeView) }">
     <SidebarNav :active="activeView" :employee-only="employeeOnly" :can-manage="canManageUsers" @navigate="navigate" />
     <main class="main-shell">

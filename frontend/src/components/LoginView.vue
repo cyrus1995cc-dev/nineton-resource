@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { onBeforeUnmount, onMounted, ref } from 'vue';
 import { api } from '../api';
 import type { AuthUser } from '../types';
 import BrandLogo from './BrandLogo.vue';
 import AppIcon from './AppIcon.vue';
+import { isDingTalkClient, requestDingTalkAuthCode } from '../dingtalk';
 
+const props = withDefaults(defineProps<{ autoDingTalkLogin?: boolean }>(), { autoDingTalkLogin: true });
 const emit = defineEmits<{ loggedIn: [user: AuthUser] }>();
 const username = ref('admin');
 const password = ref('');
@@ -12,12 +14,22 @@ const busy = ref(false);
 const error = ref('');
 const dingtalkEnabled = ref(false);
 const dingtalkCorpId = ref('');
+const dingtalkClientId = ref('');
 const dingtalkBusy = ref(false);
+let disposed = false;
 
-void api.dingtalkConfig().then((config) => { dingtalkEnabled.value = config.enabled; dingtalkCorpId.value = config.corpId; }).catch(() => undefined);
+onMounted(async () => {
+  try {
+    const config = await api.dingtalkConfig();
+    if (disposed) return;
+    dingtalkEnabled.value = config.enabled; dingtalkCorpId.value = config.corpId; dingtalkClientId.value = config.clientId;
+    if (props.autoDingTalkLogin && config.enabled && isDingTalkClient()) await loginWithDingTalk();
+  } catch { /* Local maintenance login remains available if configuration cannot be fetched. */ }
+});
+onBeforeUnmount(() => { disposed = true; });
 
 async function submit() {
-  if (!username.value.trim() || !password.value) return;
+  if (busy.value || dingtalkBusy.value || !username.value.trim() || !password.value) return;
   busy.value = true;
   error.value = '';
   try { emit('loggedIn', await api.login(username.value.trim(), password.value)); }
@@ -26,28 +38,16 @@ async function submit() {
 }
 
 async function loginWithDingTalk() {
+  if (busy.value || dingtalkBusy.value) return;
   if (!dingtalkEnabled.value) { error.value = '钉钉登录尚未配置，请联系管理员'; return; }
-  const dd = window.dd;
-  if (!dd) { error.value = '请在钉钉工作台中打开此页面'; return; }
   dingtalkBusy.value = true;
   error.value = '';
   try {
-    const requestAuthCode = dd.runtime?.permission?.requestAuthCode ?? dd.getAuthCode;
-    if (!requestAuthCode) throw new Error('当前钉钉环境不支持免登');
-    const result = await new Promise<{ code?: string; errCode?: number; errMsg?: string }>((resolve, reject) => {
-      let settled = false;
-      const done = (value: { code?: string; errCode?: number; errMsg?: string }) => { if (settled) return; settled = true; resolve(value); };
-      const invoke = () => {
-        try {
-          const returned = requestAuthCode({ corpId: dingtalkCorpId.value }, done);
-          if (returned && typeof (returned as Promise<unknown>).then === 'function') (returned as Promise<{ code?: string; errCode?: number; errMsg?: string }>).then(done).catch(reject);
-        } catch (err) { reject(err); }
-      };
-      try { (dd.ready ?? ((callback: () => void) => callback()))(invoke); } catch (err) { reject(err); }
-    });
-    if (!result.code) throw new Error(result.errMsg || '未取得钉钉授权码');
-    emit('loggedIn', await api.loginDingTalk(result.code));
-  } catch (err) { error.value = err instanceof Error ? err.message : '钉钉登录失败'; }
+    const code = await requestDingTalkAuthCode({ corpId: dingtalkCorpId.value, clientId: dingtalkClientId.value });
+    if (disposed) return;
+    const user = await api.loginDingTalk(code);
+    if (!disposed) emit('loggedIn', user);
+  } catch (err) { if (!disposed) error.value = err instanceof Error ? err.message : '钉钉登录失败'; }
   finally { dingtalkBusy.value = false; }
 }
 </script>
@@ -69,10 +69,10 @@ async function loginWithDingTalk() {
       <form class="login-form" @submit.prevent="submit">
         <label class="field"><span>用户名</span><input v-model="username" autocomplete="username" required /></label>
         <label class="field"><span>密码</span><input v-model="password" type="password" autocomplete="current-password" required /></label>
-        <button class="primary-button full-button" type="submit" :disabled="busy">{{ busy ? '登录中…' : '登录' }}</button>
+        <button class="primary-button full-button" type="submit" :disabled="busy || dingtalkBusy">{{ busy ? '登录中…' : '登录' }}</button>
       </form>
       <div class="login-divider"><span>或</span></div>
-      <button class="dingtalk-button full-button" :disabled="dingtalkBusy" @click="loginWithDingTalk">{{ dingtalkBusy ? '钉钉登录中…' : dingtalkEnabled ? '使用钉钉登录' : '钉钉登录（未配置）' }}</button>
+      <button class="dingtalk-button full-button" :disabled="busy || dingtalkBusy" @click="loginWithDingTalk">{{ dingtalkBusy ? '正在验证钉钉身份…' : dingtalkEnabled ? '使用钉钉登录' : '钉钉登录（未配置）' }}</button>
       <small class="login-hint">账号由管理员分配，如需帮助请联系管理员。</small>
     </section>
     </div>

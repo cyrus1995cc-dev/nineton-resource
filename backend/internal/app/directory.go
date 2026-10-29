@@ -282,33 +282,16 @@ func (a *App) dingLogin(w http.ResponseWriter, r *http.Request) {
 		fail(503, "钉钉登录尚未配置")
 	}
 	code := text(body(r)["code"], 2000, true)
-	tokenURL := a.Config.DingTokenURL
-	if tokenURL == "" {
-		tokenURL = a.dingBase() + "/v1.0/oauth2/userAccessToken"
-	}
-	data := a.dingJSON(r.Context(), tokenURL, Row{"clientId": a.Config.DingID, "clientSecret": a.Config.DingSecret, "code": code, "grantType": "authorization_code"}, "")
-	token := str(data["accessToken"])
-	if token == "" {
-		token = str(data["access_token"])
-	}
-	if token == "" {
-		fail(502, "钉钉未返回用户令牌")
-	}
-	userURL := a.Config.DingUserURL
-	if userURL == "" {
-		userURL = a.dingBase() + "/v1.0/contact/userinfo"
-	}
-	profile := a.dingJSON(r.Context(), userURL, nil, token)
-	union := str(profile["unionId"])
-	if union == "" {
-		union = str(profile["unionid"])
-	}
-	if union == "" {
-		fail(403, "钉钉未返回稳定用户标识")
+	// H5 requestAuthCode returns an enterprise login code, not a user OAuth code.
+	data := a.dingCall(r.Context(), "/topapi/v2/user/getuserinfo", Row{"code": code})
+	identity, _ := data["result"].(map[string]any)
+	userID := str(identity["userid"])
+	if userID == "" {
+		fail(502, "钉钉未返回有效企业用户标识")
 	}
 	ctx := r.Context()
 	result := transaction(ctx, a.DB, func(tx *sql.Tx) Row {
-		es := rows(ctx, tx, "SELECT * FROM employees WHERE corp_id=? AND union_id=? FOR UPDATE", a.Config.DingCorp, union)
+		es := rows(ctx, tx, "SELECT * FROM employees WHERE corp_id=? AND dingtalk_user_id=? FOR UPDATE", a.Config.DingCorp, userID)
 		if len(es) != 1 {
 			fail(403, "当前钉钉身份尚未关联企业通讯录")
 		}
