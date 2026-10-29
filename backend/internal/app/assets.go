@@ -194,6 +194,7 @@ func assetDetail(ctx context.Context, q DBTX, code string) Row {
 		event["changes"] = changes
 	}
 	a["events"] = events
+	attachAssetProfile(ctx, q, a)
 	return a
 }
 func (a *App) listAssets(w http.ResponseWriter, r *http.Request) {
@@ -248,10 +249,15 @@ func (a *App) saveQR(w http.ResponseWriter, r *http.Request) {
 }
 func (a *App) updateAsset(w http.ResponseWriter, r *http.Request) {
 	roles(r, "admin", "asset_manager")
+	a.ensureCatalogue(r.Context())
 	b := body(r)
 	ctx := r.Context()
 	code := r.PathValue("code")
 	result := transaction(ctx, a.DB, func(tx *sql.Tx) Row {
+		var category Row
+		if b["category_id"] != nil {
+			category = assetCategory(ctx, tx, integer(b["category_id"], 0, 9007199254740991))
+		}
 		v := one(ctx, tx, "SELECT * FROM assets WHERE asset_code=? FOR UPDATE", code)
 		if v == nil {
 			fail(404, "资产不存在")
@@ -268,6 +274,30 @@ func (a *App) updateAsset(w http.ResponseWriter, r *http.Request) {
 		updates := []string{}
 		args := []any{}
 		changes := []Row{}
+		profileChanged := false
+		if category != nil {
+			oldCustom := Row{}
+			if p := one(ctx, tx, "SELECT custom_json FROM asset_profiles WHERE asset_id=?", v["id"]); p != nil {
+				decode(str(p["custom_json"]), &oldCustom)
+			}
+			validation := Row{}
+			for key, value := range v {
+				validation[key] = value
+			}
+			for key, value := range b {
+				validation[key] = value
+			}
+			custom := cardValues(category, validation, oldCustom, true)
+			profileChanged = js(custom) != js(oldCustom)
+			for key, value := range custom {
+				if str(value) != str(oldCustom[key]) {
+					changes = append(changes, Row{"field": key, "before": oldCustom[key], "after": value})
+				}
+			}
+			saveProfile(ctx, tx, v["id"], category, custom)
+			b["category_path"] = category["path"]
+			b["category_level1"] = strings.Split(str(category["path"]), "/")[0]
+		}
 		for _, f := range editFields {
 			value, ok := b[f]
 			if !ok {
@@ -282,7 +312,7 @@ func (a *App) updateAsset(w http.ResponseWriter, r *http.Request) {
 				changes = append(changes, Row{"field": f, "before": v[f], "after": value})
 			}
 		}
-		if len(updates) == 0 {
+		if len(updates) == 0 && !profileChanged {
 			fail(400, "没有需要保存的资产资料")
 		}
 		updates = append(updates, "version=version+1", "updated_at_system=CURRENT_TIMESTAMP(3)")

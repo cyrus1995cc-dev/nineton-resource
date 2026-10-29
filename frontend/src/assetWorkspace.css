@@ -123,7 +123,7 @@
 .workspace-column-choices label { padding: 10px 8px; display: flex; align-items: center; gap: 8px; min-height: 44px; border-radius: 4px; font-size: 13px; cursor: pointer; }.workspace-column-choices label:hover { background: var(--workspace-soft); }.workspace-column-choices small { color: var(--workspace-subtle); font-size: 11px; }
 .asset-mobile-list { display: none; }
 @media (max-width: 1200px) { .workspace-selection-hint, .workspace-live-label { display: none; }.workspace-filter-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }.workspace-filter-actions { justify-content: flex-end; grid-column: 1 / -1; }.workspace-search button span { display: none; }.workspace-pagination { flex-wrap: wrap; }.page-jump { display: none; } }
-@media (max-width: 760px) {
+@media (max-width: 760px), (max-width:1000px) and (max-height:500px) and (pointer:coarse) {
   .nav-group-label { display: none; }.nav-item > svg { display: none; }
   .asset-mode { height: auto; min-height: 100dvh; }.asset-mode .sidebar { width: 100%; flex-basis: auto; }.asset-mode .brand { height: 58px; padding: 0 18px; }.asset-mode .topbar { height: 54px; padding: 0 16px; }.asset-mode .page-heading { padding: 20px 16px 16px; align-items: flex-start; }.asset-mode .workspace-content { padding: 0 12px 24px; display: block; }
   .asset-workspace { gap: 12px; }.workspace-status-tabs { gap: 4px; }.workspace-status-tabs button { padding: 10px 12px; gap: 8px; }

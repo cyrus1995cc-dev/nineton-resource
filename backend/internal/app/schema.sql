@@ -1,5 +1,40 @@
 -- MySQL 8.4, UTF-8 and UTC. Business dates stay as original strings.
 
+CREATE TABLE IF NOT EXISTS `asset_card_types` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `name` VARCHAR(200) NOT NULL,
+  `fields_json` LONGTEXT NOT NULL,
+  `active` BIGINT NOT NULL DEFAULT 1,
+  `version` BIGINT NOT NULL DEFAULT 1,
+  `updated_by` VARCHAR(200) NOT NULL DEFAULT '',
+  `updated_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  UNIQUE KEY (`name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
+
+CREATE TABLE IF NOT EXISTS `asset_categories` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `code` VARCHAR(32) NOT NULL,
+  `name` VARCHAR(200) NOT NULL,
+  `path` VARCHAR(200) NOT NULL,
+  `parent_id` BIGINT NULL,
+  `card_type_id` BIGINT NOT NULL,
+  `active` BIGINT NOT NULL DEFAULT 1,
+  `remark` VARCHAR(1000) NOT NULL DEFAULT '',
+  `version` BIGINT NOT NULL DEFAULT 1,
+  UNIQUE KEY (`code`), UNIQUE KEY (`path`),
+  FOREIGN KEY (`card_type_id`) REFERENCES `asset_card_types` (`id`),
+  FOREIGN KEY (`parent_id`) REFERENCES `asset_categories` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
+
+CREATE TABLE IF NOT EXISTS `asset_code_rules` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `prefix` VARCHAR(32) NOT NULL,
+  `digits` BIGINT NOT NULL DEFAULT 4,
+  `next_number` BIGINT NOT NULL DEFAULT 1,
+  `version` BIGINT NOT NULL DEFAULT 1,
+  UNIQUE KEY (`prefix`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
+
 CREATE TABLE IF NOT EXISTS `employees` (
   `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   `name` VARCHAR(200) NOT NULL DEFAULT '',
@@ -128,6 +163,29 @@ CREATE TABLE IF NOT EXISTS `asset_flows` (
   UNIQUE KEY `idx_asset_flows_2` (`document_no`),
   FOREIGN KEY (`to_employee_id`) REFERENCES `employees` (`id`) ON DELETE NO ACTION,
   FOREIGN KEY (`applicant_id`) REFERENCES `users` (`id`) ON DELETE NO ACTION
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
+
+CREATE TABLE IF NOT EXISTS `asset_profiles` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `asset_id` BIGINT NOT NULL,
+  `category_id` BIGINT NOT NULL,
+  `card_type_id` BIGINT NOT NULL,
+  `custom_json` LONGTEXT NOT NULL DEFAULT ('{}'),
+  UNIQUE KEY (`asset_id`),
+  FOREIGN KEY (`asset_id`) REFERENCES `assets` (`id`) ON DELETE CASCADE,
+  FOREIGN KEY (`category_id`) REFERENCES `asset_categories` (`id`),
+  FOREIGN KEY (`card_type_id`) REFERENCES `asset_card_types` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
+
+CREATE TABLE IF NOT EXISTS `asset_create_requests` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `request_id` VARCHAR(100) NOT NULL,
+  `request_hash` VARCHAR(200) NOT NULL,
+  `actor_id` BIGINT NOT NULL,
+  `asset_id` BIGINT NOT NULL,
+  UNIQUE KEY (`request_id`),
+  FOREIGN KEY (`actor_id`) REFERENCES `users` (`id`),
+  FOREIGN KEY (`asset_id`) REFERENCES `assets` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
 
 CREATE TABLE IF NOT EXISTS `asset_events` (

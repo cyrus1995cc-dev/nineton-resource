@@ -5,5 +5,7 @@ import './organization.css';
 import './assetWorkspace.css';
 import './brand.css';
 import './assetScan.css';
+import './catalogue.css';
+import './mobile.css';
 
 createApp(App).mount('#app');

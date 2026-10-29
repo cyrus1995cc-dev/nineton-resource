@@ -1,6 +1,10 @@
 <script setup lang="ts">
 withDefaults(defineProps<{ name: string; size?: number }>(), { size: 18 });
 const paths: Record<string, string> = {
+  plus: 'M12 5v14M5 12h14',
+  person: 'M20 21v-2a6 6 0 0 0-6-6h-4a6 6 0 0 0-6 6v2M16 6a4 4 0 1 1-8 0 4 4 0 0 1 8 0',
+  card: 'M3 4h18v16H3zM7 8h4M7 12h10M7 16h7',
+  code: 'M4 3v18M8 3v18M12 3v18M16 3v18M20 3v18',
   home: 'm3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-8H9v8H4a1 1 0 0 1-1-1z',
   box: 'm3 7 9-4 9 4v10l-9 4-9-4z M3 7l9 4 9-4 M12 11v10 M7 5l10 4',
   list: 'M8 5h13M8 12h13M8 19h13M3 5h.01M3 12h.01M3 19h.01',

@@ -28,6 +28,9 @@ export type Asset = {
   tax_amount: number;
   updated_at_system: string;
   events?: AssetEvent[];
+  category_id?: number;
+  card_type?: { id: number; name: string; fields: import('./catalogue').CardField[] };
+  custom_values?: Record<string, string | number | null>;
 };
 
 export type AuthUser = { id: number; username: string; display_name: string; role: 'admin' | 'asset_manager' | 'viewer' | 'employee' | 'approver' | 'guest'; employee_id?: number | null; department?: string };

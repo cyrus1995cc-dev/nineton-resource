@@ -4,6 +4,7 @@ import { createApiClient, type DownloadFile } from './apiClient';
 import { ApiError } from './apiClient';
 import type { Flow, FlowDetail, FlowInput } from '../shared/flows';
 import type { AssetFilters, AssetOptions } from './assetWorkspace';
+import type { AssetCatalogue } from './catalogue';
 
 const authToken = () => typeof localStorage === 'undefined' ? '' : localStorage.getItem('asset_token') ?? '';
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
@@ -15,6 +16,13 @@ const request = createApiClient({ baseUrl: apiBaseUrl, getToken: authToken, onSe
 } });
 
 export const api = {
+  catalogue: () => request<AssetCatalogue>('/api/asset-catalogue'),
+  assetCompanies: () => request<{ companies: Pick<Company, 'id' | 'name'>[] }>('/api/asset-catalogue/companies'),
+  saveCategory: (id: number | null, input: Record<string, unknown>) => request(id ? `/api/asset-catalogue/categories/${id}` : '/api/asset-catalogue/categories', { method: id ? 'PATCH' : 'POST', body: JSON.stringify(input) }),
+  saveCard: (id: number | null, input: Record<string, unknown>) => request(id ? `/api/asset-catalogue/cards/${id}` : '/api/asset-catalogue/cards', { method: id ? 'PATCH' : 'POST', body: JSON.stringify(input) }),
+  saveCodeRule: (input: Record<string, unknown>) => request<{ preview: string }>('/api/asset-catalogue/code-rules', { method:'PUT', body:JSON.stringify(input) }),
+  previewAssetCode: (prefix: string) => request<{code: string}>(`/api/asset-catalogue/code-preview?${new URLSearchParams({prefix})}`),
+  createAsset: (input: Record<string, unknown>) => request<{asset: Asset; replayed?: boolean}>('/api/assets', {method:'POST',body:JSON.stringify(input)}),
   download: (path: string) => request<DownloadFile>(path, {}, 'download'),
   login: async (username: string, password: string) => {
     const result = await request<{ token: string; user: AuthUser }>('/api/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) });

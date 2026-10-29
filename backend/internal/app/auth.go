@@ -55,6 +55,7 @@ const userJoin = "SELECT u.*, e.department AS employee_department FROM users u L
 const validUser = "u.active=1 AND (e.id IS NULL OR (e.active=1 AND e.missing_since IS NULL))"
 
 func (a *App) Bootstrap(ctx context.Context) {
+	a.ensureCatalogue(ctx)
 	if exists(ctx, a.DB, "SELECT id FROM users LIMIT 1") {
 		return
 	}
