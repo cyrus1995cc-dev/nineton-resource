@@ -7,5 +7,6 @@ import './brand.css';
 import './assetScan.css';
 import './catalogue.css';
 import './mobile.css';
+import './employeeMappings.css';
 
 createApp(App).mount('#app');

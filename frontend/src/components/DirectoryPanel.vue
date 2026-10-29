@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import LegacyAssetMappings from './LegacyAssetMappings.vue';
 import { api } from '../api';
 import type { Company, DirectoryStatus, Employee, EmployeeMapping } from '../directory';
 import { roleLabels } from '../directory';
@@ -8,23 +9,21 @@ import { descendantIds, treeRows } from '../organization';
 const emit = defineEmits<{ changed: [] }>();
 const status = ref<DirectoryStatus | null>(null); const employees = ref<Employee[]>([]); const mappings = ref<EmployeeMapping[]>([]);
 const busy = ref(false); const error = ref(''); const message = ref(''); const search = ref(''); const tab = ref('employees');
-const roots = ref('1'); const interval = ref(0); const page = ref(1); const mappingPage = ref(1);
+const roots = ref('1'); const interval = ref(0); const page = ref(1);
 const companies = ref<Company[]>([]); const companyFilter = ref(0); const departmentFilter = ref(0); const defaultCompany = ref(0);
 let pollTimer: ReturnType<typeof setTimeout> | undefined; let disposed = false; let observedRun = 0;
 const syncing = computed(() => !!status.value?.syncing);
 const departments = computed(() => status.value?.departments.filter(d => d.corp_id === status.value?.corpId) ?? []);
 const departmentTree = computed(() => treeRows(departments.value, d => d.dingtalk_id, d => d.parent_id));
 const departmentScope = computed(() => departmentFilter.value ? descendantIds(departments.value, departmentFilter.value, d => d.dingtalk_id, d => d.parent_id) : null);
-const picks = reactive<Record<number, number>>({}); const reason = ref('已核对旧台账使用人与钉钉员工身份'); const statusReason = ref('');
+const statusReason = ref('');
 const filtered = computed(() => employees.value.filter(e => `${e.name} ${e.company} ${e.department} ${e.job_number} ${e.title}`.toLowerCase().includes(search.value.trim().toLowerCase()) && (!companyFilter.value || e.memberships?.some(m => m.company_id === companyFilter.value)) && (!departmentScope.value || e.memberships?.some(m => departmentScope.value!.has(m.dingtalk_id)))));
 const shown = computed(() => filtered.value.slice((page.value - 1) * 20, page.value * 20));
-const shownMappings = computed(() => mappings.value.slice((mappingPage.value - 1) * 20, mappingPage.value * 20));
 async function load() {
   const [s, e, m, c] = await Promise.all([api.directoryStatus(), api.listEmployees(true), api.employeeMappings(), api.listCompanies()]);
   if (disposed) return;
   status.value = s; employees.value = e.employees; mappings.value = m.assets; companies.value = c.companies; roots.value = s.rootDepartmentIds.join(','); interval.value = s.intervalMinutes; defaultCompany.value = s.defaultCompanyId;
   page.value = Math.min(page.value, Math.max(1, Math.ceil(filtered.value.length / 20)));
-  mappingPage.value = Math.min(mappingPage.value, Math.max(1, Math.ceil(mappings.value.length / 20)));
   schedulePoll();
 }
 async function action(fn: () => Promise<void>) { busy.value = true; error.value = ''; message.value = ''; try { await fn(); } catch (err) { error.value = err instanceof Error ? err.message : '操作失败'; } finally { busy.value = false; } }
@@ -52,7 +51,7 @@ async function sync() { await action(async () => {
   else message.value = '同步任务已开始，可以离开本页，后台会继续同步。';
 }); }
 async function save() { await action(async () => { const ids = roots.value.split(/[,，\s]+/).filter(Boolean).map(Number); await api.directorySettings({ rootDepartmentIds: ids, intervalMinutes: Number(interval.value), defaultCompanyId: defaultCompany.value || null }); await load(); message.value = '同步设置已保存'; }); }
-async function bind(asset: EmployeeMapping) { await action(async () => { await api.bindAssetEmployee(asset.asset_code, picks[asset.id], asset.version, reason.value); await load(); emit('changed'); message.value = `${asset.asset_code} 已关联员工，台账姓名保持原记录`; }); }
+async function mappingsChanged() { await action(load); emit('changed'); }
 async function setActive(e: Employee) { await action(async () => { await api.setEmployeeActive(e.id, !e.active, statusReason.value); await load(); emit('changed'); message.value = `${e.name}已${e.active ? '停用' : '启用'}，历史记录保留`; }); }
 onMounted(() => { void action(load); });
 watch([companyFilter, departmentFilter], () => { page.value = 1; });
@@ -79,13 +78,7 @@ onBeforeUnmount(() => { disposed = true; if (pollTimer) clearTimeout(pollTimer);
       <div class="department-list"><div v-for="row in departmentTree" :key="row.item.id" class="department-row" :style="{ paddingLeft: `${12 + Math.min(row.depth, 6) * 20}px` }"><button class="text-button" @click="departmentFilter = row.item.dingtalk_id; tab = 'employees'"><strong>{{ row.item.name }}</strong></button><span>部门编号 {{ row.item.dingtalk_id }}</span><span v-if="row.item.missing" class="directory-state warning">授权范围待核对</span><span v-else class="directory-state">已同步</span></div></div>
       <p v-if="!departmentTree.length" class="empty-history">尚无组织架构，配置钉钉应用后点击“立即同步”。</p>
     </section>
-    <section v-else-if="tab === 'mappings'">
-      <p class="muted">核对旧台账中的使用人后，选择对应的钉钉员工。重名人员请结合部门与工号确认；每次关联都有记录。</p>
-      <label class="field"><span>关联原因</span><input v-model="reason" maxlength="500" /></label>
-      <div v-for="asset in shownMappings" :key="asset.id" class="directory-mapping"><div><strong>{{ asset.asset_code }} · {{ asset.name }}</strong><span>{{ asset.assignee }} · {{ asset.department || '未设置部门' }}</span></div><label class="field"><span>对应员工{{ asset.candidates.length > 1 ? '（有重名，请核对）' : '' }}</span><select v-model.number="picks[asset.id]" :disabled="busy || !asset.candidates.length"><option :value="undefined" disabled>{{ asset.candidates.length ? '请选择对应员工' : '无同名员工，请核对通讯录或走交接审批' }}</option><option v-for="c in asset.candidates" :key="c.id" :value="c.id">{{ c.name }} · {{ c.department }} · {{ c.job_number || `编号 ${c.id}` }}</option></select></label><button class="secondary-button" :disabled="busy || !picks[asset.id] || !reason.trim()" @click="bind(asset)">核对并关联</button></div>
-      <p v-if="!mappings.length" class="empty-history">没有待关联的旧台账记录。</p>
-      <div class="pager"><span>共 {{ mappings.length }} 项待关联</span><div><button :disabled="mappingPage <= 1" @click="mappingPage--">上一页</button><span>{{ mappingPage }} / {{ Math.max(1, Math.ceil(mappings.length / 20)) }}</span><button :disabled="mappingPage * 20 >= mappings.length" @click="mappingPage++">下一页</button></div></div>
-    </section>
+    <LegacyAssetMappings v-else-if="tab === 'mappings'" :assets="mappings" :disabled="busy || syncing" @changed="mappingsChanged" @refresh="action(load)" />
     <section v-else>
       <form class="directory-config" @submit.prevent="save"><label class="field"><span>授权起始部门编号</span><input v-model="roots" required /><small>根部门为 1；部分授权时填写可访问的部门编号，多个用逗号分隔。</small></label><label class="field"><span>定时同步间隔</span><select v-model.number="interval"><option :value="0">关闭，仅手动同步</option><option :value="30">每 30 分钟</option><option :value="60">每小时</option><option :value="360">每 6 小时</option><option :value="1440">每天</option></select></label><label class="field"><span>未绑定部门的默认公司</span><select v-model.number="defaultCompany"><option :value="0">不自动分配</option><option v-for="c in companies" :key="c.id" :value="c.id">{{ c.name }}</option></select><small>按公司绑定的部门就近归属；未命中时才使用此设置。</small></label><button class="primary-button" :disabled="busy || syncing">保存同步设置</button></form>
       <p class="muted">接口失败时保留原通讯录；未再读到的人员标为待核对，并暂停关联账号访问。核实离职后再停用，历史和名下资产保留。待审批人员须先处理单据再停用。</p>

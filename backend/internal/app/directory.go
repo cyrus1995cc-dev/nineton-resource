@@ -141,9 +141,24 @@ func (a *App) employeeStatus(w http.ResponseWriter, r *http.Request) {
 func (a *App) mappings(w http.ResponseWriter, r *http.Request) {
 	roles(r, "admin")
 	ctx := r.Context()
-	assets := rows(ctx, a.DB, "SELECT id,asset_code,name,assignee,department,version FROM assets WHERE assignee_employee_id IS NULL AND COALESCE(assignee,'')<>'' ORDER BY assignee,asset_code")
+	assets := rows(ctx, a.DB, "SELECT id,asset_code,name,assignee,department,company,version FROM assets WHERE assignee_employee_id IS NULL AND COALESCE(assignee,'')<>'' ORDER BY assignee,department,asset_code")
+	candidates := map[string][]Row{}
+	rosterCounts := map[string]int{}
+	for _, employee := range rows(ctx, a.DB, "SELECT id,name,department,job_number,active FROM employees WHERE missing_since IS NULL ORDER BY id") {
+		name := str(employee["name"])
+		rosterCounts[name]++
+		if num(employee["active"]) == 1 {
+			delete(employee, "active")
+			candidates[name] = append(candidates[name], employee)
+		}
+	}
 	for _, v := range assets {
-		v["candidates"] = rows(ctx, a.DB, "SELECT id,name,department,job_number FROM employees WHERE name=? AND active=1 AND missing_since IS NULL", v["assignee"])
+		name := str(v["assignee"])
+		v["candidates"] = candidates[name]
+		if candidates[name] == nil {
+			v["candidates"] = []Row{}
+		}
+		v["roster_match_count"] = rosterCounts[name]
 	}
 	send(w, 200, Row{"assets": assets})
 }
@@ -155,30 +170,7 @@ func (a *App) bindEmployee(w http.ResponseWriter, r *http.Request) {
 	reason := text(b["reason"], 500, true)
 	ctx := r.Context()
 	transaction(ctx, a.DB, func(tx *sql.Tx) bool {
-		asset := one(ctx, tx, "SELECT * FROM assets WHERE asset_code=? FOR UPDATE", r.PathValue("code"))
-		employee := one(ctx, tx, "SELECT * FROM employees WHERE id=? AND active=1 AND missing_since IS NULL FOR SHARE", id)
-		if asset == nil || employee == nil {
-			fail(404, "资产或有效员工不存在")
-		}
-		if num(asset["version"]) != version {
-			fail(409, "台账已变化，请刷新后重新核对")
-		}
-		if num(asset["assignee_employee_id"]) == id {
-			return true
-		}
-		if asset["assignee_employee_id"] != nil {
-			fail(409, "资产已关联员工，更换使用人请通过交接审批")
-		}
-		if asset["assignee"] != employee["name"] || str(asset["assignee"]) == "" {
-			fail(409, "旧台账姓名与员工姓名不一致，请通过交接审批变更")
-		}
-		if exists(ctx, tx, "SELECT i.id FROM asset_flow_items i JOIN asset_flows f ON f.id=i.flow_id WHERE i.asset_id=? AND f.status='pending'", asset["id"]) {
-			fail(409, "资产有待审批单据，请先处理后关联")
-		}
-		exec(ctx, tx, "UPDATE assets SET assignee_employee_id=?,version=version+1,updated_at_system=CURRENT_TIMESTAMP(3) WHERE id=?", id, asset["id"])
-		writeEvent(ctx, tx, asset, "人员关联", str(actor(r)["display_name"]), reason, nil, nil, []Row{{"field": "assignee_employee_id", "before": "", "after": id}})
-		audit(ctx, tx, actor(r), "bind_employee", str(asset["asset_code"]), Row{"employeeId": id, "reason": reason})
-		return true
+		return bindMappedEmployee(ctx, tx, employeeBinding{code: r.PathValue("code"), employeeID: id, version: version}, reason, actor(r))
 	})
 	send(w, 200, Row{"ok": true})
 }

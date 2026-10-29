@@ -49,6 +49,7 @@ export const api = {
   syncDirectory: () => request<{ employees: number; departments: number }>('/api/directory/sync', { method: 'POST' }),
   directorySettings: (input: { rootDepartmentIds: number[]; intervalMinutes: number; defaultCompanyId?: number | null }) => request('/api/directory/settings', { method: 'PUT', body: JSON.stringify(input) }),
   employeeMappings: () => request<{ assets: EmployeeMapping[] }>('/api/directory/mappings'),
+  bindAssetEmployees: (items: Array<{ assetCode: string; employeeId: number; expectedVersion: number }>, reason: string) => request<{ bound: number; skipped: number }>('/api/directory/mappings/batch', { method: 'POST', body: JSON.stringify({ items, reason }) }),
   bindAssetEmployee: (code: string, employeeId: number, expectedVersion: number, reason: string) => request(`/api/directory/mappings/${encodeURIComponent(code)}`, { method: 'POST', body: JSON.stringify({ employeeId, expectedVersion, reason }) }),
   setEmployeeActive: (id: number, active: boolean, reason: string) => request(`/api/directory/employees/${id}`, { method: 'PATCH', body: JSON.stringify({ active, reason }) }),
   createUser: (input: { username: string; password: string; display_name: string; role: ManagedUser['role'] }) => request<{ user: ManagedUser }>('/api/auth/users', {

@@ -238,6 +238,7 @@ func (a *App) routes() {
 	m.HandleFunc("POST /api/directory/sync/start", a.startDirectorySync)
 	m.HandleFunc("PATCH /api/directory/employees/{id}", a.employeeStatus)
 	m.HandleFunc("GET /api/directory/mappings", a.mappings)
+	m.HandleFunc("POST /api/directory/mappings/batch", a.bindEmployeesBatch)
 	m.HandleFunc("POST /api/directory/mappings/{code}", a.bindEmployee)
 	m.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) { send(w, 404, Row{"message": "接口不存在"}) })
 	if a.Config.FrontendDir != "" {
