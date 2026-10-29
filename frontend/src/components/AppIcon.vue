@@ -1,6 +1,7 @@
 <script setup lang="ts">
 withDefaults(defineProps<{ name: string; size?: number }>(), { size: 18 });
 const paths: Record<string, string> = {
+  printer: 'M6 8V3h12v5M6 17H3V9h18v8h-3M6 14h12v7H6zM17 11h.01',
   plus: 'M12 5v14M5 12h14',
   person: 'M20 21v-2a6 6 0 0 0-6-6h-4a6 6 0 0 0-6 6v2M16 6a4 4 0 1 1-8 0 4 4 0 0 1 8 0',
   card: 'M3 4h18v16H3zM7 8h4M7 12h10M7 16h7',

@@ -160,11 +160,17 @@ func (a *App) logoutSession(w http.ResponseWriter, r *http.Request) {
 	a.cookie(w, a.contextCookieName(), "", -1)
 }
 
-// Only the application's root/login pages and a numeric flow deep link are
+// Only the application's root/login pages and validated asset/flow deep links are
 // supported return destinations. Never reflect arbitrary redirect URLs.
 func ssoReturnPath(raw string) string {
 	u, e := url.Parse(raw)
-	if e != nil || u.IsAbs() || u.Host != "" || u.Opaque != "" || u.Fragment != "" || (u.Path != "/" && u.Path != "/login") {
+	if e != nil || u.IsAbs() || u.Host != "" || u.Opaque != "" || u.Fragment != "" {
+		return "/"
+	}
+	if strings.HasPrefix(u.Path, "/a/") && codePattern.MatchString(strings.TrimPrefix(u.Path, "/a/")) && u.RawQuery == "" {
+		return u.Path
+	}
+	if u.Path != "/" && u.Path != "/login" {
 		return "/"
 	}
 	q := u.Query()

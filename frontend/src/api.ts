@@ -5,6 +5,7 @@ import { ApiError } from './apiClient';
 import type { Flow, FlowDetail, FlowInput } from '../shared/flows';
 import type { AssetFilters, AssetOptions } from './assetWorkspace';
 import type { AssetCatalogue } from './catalogue';
+import type { LabelAsset, LabelTemplate } from './assetLabels';
 
 const authToken = () => typeof localStorage === 'undefined' ? '' : localStorage.getItem('asset_token') ?? '';
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
@@ -16,6 +17,10 @@ const request = createApiClient({ baseUrl: apiBaseUrl, getToken: authToken, onSe
 } });
 
 export const api = {
+  labelTemplates: () => request<{templates: LabelTemplate[]}>('/api/labels/templates'),
+  saveLabelTemplate: (template: LabelTemplate) => request<{template: LabelTemplate}>(`/api/labels/templates${template.id ? '/' + encodeURIComponent(template.id) : ''}`, {method:template.id ? 'PATCH' : 'POST', body:JSON.stringify({...template,expectedVersion:template.version})}),
+  deleteLabelTemplate: (template: LabelTemplate) => request(`/api/labels/templates/${encodeURIComponent(template.id)}`, {method:'DELETE',body:JSON.stringify({expectedVersion:template.version})}),
+  labelAssets: (assetCodes: string[]) => request<{assets: LabelAsset[]}>('/api/labels/assets', {method:'POST',body:JSON.stringify({assetCodes})}),
   catalogue: () => request<AssetCatalogue>('/api/asset-catalogue'),
   assetCompanies: () => request<{ companies: Pick<Company, 'id' | 'name'>[] }>('/api/asset-catalogue/companies'),
   saveCategory: (id: number | null, input: Record<string, unknown>) => request(id ? `/api/asset-catalogue/categories/${id}` : '/api/asset-catalogue/categories', { method: id ? 'PATCH' : 'POST', body: JSON.stringify(input) }),

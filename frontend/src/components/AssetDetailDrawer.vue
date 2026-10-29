@@ -11,6 +11,7 @@ const props = defineProps<{ asset: Asset | null; busy?: boolean; editBusy?: bool
 const emit = defineEmits<{
   close: [];
   edit: [];
+  print: [];
   event: [payload: { type: FlowType }];
   flow: [id: number];
 }>();
@@ -85,6 +86,7 @@ watch(() => !!props.asset, async (open) => {
 onBeforeUnmount(() => { if (props.asset) restorePage(); });
 
 watch(() => props.asset, () => { expanded.value = false; recordTab.value = '操作记录'; closeMore(); });
+function printLabel() { if (!props.canWrite) return; closeMore(); emit('print'); }
 function startEditing() { if (!props.asset || props.canWrite === false) return; closeMore(); emit('edit'); }
 </script>
 
@@ -149,6 +151,7 @@ function startEditing() { if (!props.asset || props.canWrite === false) return; 
           <button class="scan-shortcut-setting" @click="configureShortcuts"><span>设置外显操作项</span><span>{{ primaryActionSummary }}<AppIcon name="chevron" :size="16" /></span></button>
           <section v-if="employeeActions.length" class="scan-action-group"><h4>员工操作</h4><div class="scan-more-grid"><button v-for="type in employeeActions" :key="type" @click="launch(type)"><span class="scan-action-symbol" :class="scanActionIcons[type].tone"><AppIcon :name="scanActionIcons[type].name" :size="24" /></span>{{ scanActionLabels[type] }}</button></div></section>
           <section v-if="canWrite || managerActions.length" class="scan-action-group"><h4>管理员操作</h4><div class="scan-more-grid"><button v-if="canWrite" @click="startEditing"><span class="scan-action-symbol coral"><AppIcon name="edit" :size="24" /></span>编辑资料</button><button v-for="type in managerActions" :key="type" @click="launch(type)"><span class="scan-action-symbol" :class="scanActionIcons[type].tone"><AppIcon :name="scanActionIcons[type].name" :size="24" /></span>{{ managerActionLabels[type] }}</button></div></section>
+          <button v-if="canWrite" class="secondary-button full-button" @click="printLabel"><AppIcon name="printer" :size="18" />打印标签</button>
           <p class="scan-sheet-note">可用操作随资产状态和账号权限变化，流转申请经审批后生效。</p>
         </template>
         <button class="scan-more-cancel" @click="closeMore">取消</button>

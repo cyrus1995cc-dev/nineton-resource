@@ -20,9 +20,16 @@ import CompanyPanel from './components/CompanyPanel.vue';
 import AssetFormDialog from './components/AssetFormDialog.vue';
 import CatalogueSettings from './components/CatalogueSettings.vue';
 import MobileWorkbench from './components/MobileWorkbench.vue';
+import LabelTemplatesPanel from './components/LabelTemplatesPanel.vue';
+import LabelPrintDialog from './components/LabelPrintDialog.vue';
+import { assetLabelCode } from './assetLabels';
 import { roleLabels } from './directory';
 
 const activeView = ref('dashboard');
+const labelCodes = ref<string[]>([]);
+function printLabels(codes: string[]) { if (!canWrite.value) return; labelCodes.value = [...codes]; selected.value = null; }
+function labelSettings() { labelCodes.value = []; navigate('labels'); }
+async function openInitialTarget() { if (flowId.value) { activeView.value = 'events'; return; } const code = assetLabelCode(window.location.pathname); if (!code || currentUser.value?.role === 'guest') return; activeView.value = 'scan'; try { selected.value = await api.getAsset(code); } catch (e) { error.value = e instanceof Error ? e.message : '资产不存在或无权查看'; } }
 const assetFormOpen = ref(false);
 const editingAsset = ref<Asset | null>(null);
 function newAsset() { if (!canWrite.value) return; editingAsset.value = null; assetFormOpen.value = true; }
@@ -31,7 +38,7 @@ async function assetSaved(asset: Asset) { const edited = !!editingAsset.value; a
 function formDirectory() { assetFormOpen.value = false; navigate(canManageUsers.value ? 'directory' : 'profile'); }
 const catalogueTab = computed(() => ['cards','codes'].includes(activeView.value) ? activeView.value as 'cards' | 'codes' : 'categories');
 const mobileItems = [{key:'dashboard',label:'工作台',icon:'home'},{key:'assets',label:'资产',icon:'box'},{key:'scan',label:'扫一扫',icon:'scan'},{key:'events',label:'审批',icon:'flow'},{key:'profile',label:'我的',icon:'person'}];
-const isMobileTab = (key: string) => key === activeView.value || key === 'profile' && ['settings','companies','directory','categories','cards','codes'].includes(activeView.value) || key === 'assets' && activeView.value === 'my-assets';
+const isMobileTab = (key: string) => key === activeView.value || key === 'profile' && ['settings','companies','directory','categories','cards','codes','labels'].includes(activeView.value) || key === 'assets' && activeView.value === 'my-assets';
 const stats = ref<Stats>({ total: 0, status: {}, categories: [], locations: [], companies: [], amounts: { taxed: 0, untaxed: 0, tax: 0 } });
 const assetsRevision = ref(0);
 const selected = ref<Asset | null>(null);
@@ -66,7 +73,7 @@ const canWrite = computed(() => currentUser.value?.role === 'admin' || currentUs
 const employeeOnly = computed(() => ['employee', 'approver'].includes(currentUser.value?.role ?? ''));
 const canRequest = computed(() => !!currentUser.value && !['viewer', 'guest'].includes(currentUser.value.role));
 const canManageUsers = computed(() => currentUser.value?.role === 'admin');
-const activeTitle = computed(() => ({ dashboard: employeeOnly.value ? '我的工作台' : '经营分析看板', 'my-assets': '我的资产', assets: employeeOnly.value ? '我的资产' : '资产清单', scan: '扫码查询', events: '资产流转', inventory: '资产盘点', companies: '公司管理', directory: '组织与人员', settings: '账号与权限', categories: '资产基础设置', cards: '资产基础设置', codes: '资产基础设置', profile: '我的' }[activeView.value] ?? '九吨资产'));
+const activeTitle = computed(() => ({ dashboard: employeeOnly.value ? '我的工作台' : '经营分析看板', 'my-assets': '我的资产', assets: employeeOnly.value ? '我的资产' : '资产清单', scan: '扫码查询', events: '资产流转', inventory: '资产盘点', companies: '公司管理', directory: '组织与人员', settings: '账号与权限', categories: '资产基础设置', cards: '资产基础设置', codes: '资产基础设置', labels: '标签样式', profile: '我的' }[activeView.value] ?? '九吨资产'));
 watch(importPreview, async (preview) => { if (preview) { await nextTick(); if (importPreview.value && !importDialog.value?.open) importDialog.value?.showModal(); } });
 function cancelImport(event: Event) { if (importBusy.value) event.preventDefault(); else importPreview.value = null; }
 
@@ -83,14 +90,14 @@ async function bootstrapAuth() {
     currentUser.value = await api.me();
     const url = new URL(window.location.href);
     if (url.searchParams.has('silentSignin')) { url.searchParams.delete('silentSignin'); window.history.replaceState(null, '', url); }
-    await refresh(); if (flowId.value) activeView.value = 'events';
+    await refresh(); await openInitialTarget();
   }
   catch (err) { if (!(err instanceof ApiError && err.status === 401)) authFailure.value = err instanceof Error ? err.message : '登录状态检查失败'; }
   finally { authReady.value = true; }
 }
-async function onLoggedIn(user: AuthUser) { currentUser.value = user; await refresh(); if (flowId.value) activeView.value = 'events'; }
+async function onLoggedIn(user: AuthUser) { currentUser.value = user; await refresh(); await openInitialTarget(); }
 function resetSession() {
-  currentUser.value = null; selected.value = null; flowDraft.value = null;
+  currentUser.value = null; selected.value = null; flowDraft.value = null; labelCodes.value = [];
   flowId.value = Number(new URLSearchParams(window.location.search).get('flow')) || null;
   stats.value = { total: 0, status: {}, categories: [], locations: [], companies: [], amounts: { taxed: 0, untaxed: 0, tax: 0 } };
   activeView.value = 'dashboard'; assetsRevision.value = 0;
@@ -142,7 +149,7 @@ async function confirmImport() {
 function navigate(view: string) {
   activeView.value = employeeOnly.value && view === 'assets' ? 'my-assets' : view;
   void nextTick(() => window.scrollTo(0, 0));
-  const url = new URL(window.location.href); url.searchParams.delete('flow'); window.history.replaceState(null, '', url);
+  const url = new URL(window.location.href); url.pathname = '/'; url.searchParams.delete('flow'); window.history.replaceState(null, '', url);
   flowId.value = null; flowDraft.value = null;
   if (view === 'events') selected.value = null;
   if (view === 'settings') void loadUsers();
@@ -159,7 +166,7 @@ onBeforeUnmount(() => { window.removeEventListener(SESSION_EXPIRED_EVENT, resetS
     <SidebarNav :active="activeView" :employee-only="employeeOnly" :can-manage="canManageUsers" @navigate="navigate" />
     <main class="main-shell" :class="{ 'mobile-home-view': activeView === 'dashboard', 'mobile-profile-view': activeView === 'profile' }">
       <header class="topbar"><div class="tenant"><span class="tenant-badge">资产管理</span><strong>重庆市九吨科技有限公司</strong><span class="chevron">⌄</span></div><div class="top-actions"><span>{{ currentUser?.display_name }} · {{ currentUser ? roleLabels[currentUser.role] : '' }}</span><button class="avatar" aria-label="个人信息" title="个人信息" @click="navigate('profile')">{{ currentUser?.display_name?.slice(0, 1) }}</button></div></header>
-      <div class="page-heading"><div><span class="eyebrow">九吨资产 · 工作台</span><h1>{{ activeTitle }}</h1></div><div v-show="!['companies', 'directory', 'settings', 'assets', 'my-assets', 'categories', 'cards', 'codes', 'profile'].includes(activeView)" class="heading-actions"><input ref="importInput" type="file" accept=".xlsx,.xls" class="hidden-input" @change="onImportFile" /><button v-if="canWrite" class="secondary-button" :disabled="importBusy" @click="importInput?.click()">{{ importBusy ? '处理中…' : '导入 Excel' }}</button><button class="primary-button" @click="navigate('scan')">扫码查询</button></div></div>
+      <div class="page-heading"><div><span class="eyebrow">九吨资产 · 工作台</span><h1>{{ activeTitle }}</h1></div><div v-show="!['companies', 'directory', 'settings', 'assets', 'my-assets', 'categories', 'cards', 'codes', 'labels', 'profile'].includes(activeView)" class="heading-actions"><input ref="importInput" type="file" accept=".xlsx,.xls" class="hidden-input" @change="onImportFile" /><button v-if="canWrite" class="secondary-button" :disabled="importBusy" @click="importInput?.click()">{{ importBusy ? '处理中…' : '导入 Excel' }}</button><button class="primary-button" @click="navigate('scan')">扫码查询</button></div></div>
       <div v-if="error" class="error-banner" role="alert">{{ error }} <button aria-label="关闭提示" @click="error = ''">×</button></div><div v-if="toast" class="toast" role="status">{{ toast }}</div>
 
       <MobileWorkbench v-if="activeView === 'dashboard'" class="mobile-only" :user="currentUser" :stats="stats" @navigate="navigate" @create="newAsset" />
@@ -169,7 +176,7 @@ onBeforeUnmount(() => { window.removeEventListener(SESSION_EXPIRED_EVENT, resetS
         <div class="dashboard-grid three"><article class="panel"><div class="panel-header"><div><span class="eyebrow">位置统计</span><h2>楼层分布</h2></div></div><div class="simple-list"><div v-for="item in stats.locations.slice(0, 6)" :key="item.name"><span>{{ item.name }}</span><strong>{{ item.count }}</strong></div></div></article><article class="panel"><div class="panel-header"><div><span class="eyebrow">公司统计</span><h2>所属公司</h2></div></div><div class="simple-list"><div v-for="item in stats.companies.slice(0, 6)" :key="item.name"><span class="truncate">{{ item.name }}</span><strong>{{ item.count }}</strong></div></div></article><article class="panel quick-panel"><span class="eyebrow">快捷操作</span><h2>开始管理资产</h2><button class="quick-action" @click="navigate('assets')">查看资产清单 <AppIcon name="chevron" :size="16" /></button><button class="quick-action" @click="navigate('scan')">扫描二维码查询 <AppIcon name="scan" :size="16" /></button><button v-if="canWrite" class="quick-action" :disabled="importBusy" @click="importInput?.click()">批量导入 Excel <AppIcon name="upload" :size="16" /></button></article></div>
       </section>
 
-      <section v-else-if="['assets', 'my-assets'].includes(activeView)" class="content-area workspace-content"><AssetWorkspace :key="activeView" :user="currentUser" :scope="activeView === 'my-assets' || employeeOnly ? 'mine' : ''" :reload="assetsRevision" :import-busy="importBusy" @select="selectAsset" @create="newAsset" @flow="startAssetFlow" @import="importInput?.click()" @success="showToast" /></section>
+      <section v-else-if="['assets', 'my-assets'].includes(activeView)" class="content-area workspace-content"><AssetWorkspace :key="activeView" :user="currentUser" :scope="activeView === 'my-assets' || employeeOnly ? 'mine' : ''" :reload="assetsRevision" :import-busy="importBusy" @select="selectAsset" @create="newAsset" @print="printLabels" @flow="startAssetFlow" @import="importInput?.click()" @success="showToast" /></section>
 
       <section v-else-if="activeView === 'events'" class="content-area"><FlowPanel :user="currentUser" :can-write="canRequest" :draft="flowDraft" :initial-id="flowId" @changed="refresh" @success="showToast" @settings="navigate('settings')" /></section>
 
@@ -178,13 +185,15 @@ onBeforeUnmount(() => { window.removeEventListener(SESSION_EXPIRED_EVENT, resetS
       <section v-else-if="activeView === 'companies' && canManageUsers" class="content-area"><CompanyPanel @changed="refresh" @directory="navigate('directory')" /></section>
       <section v-else-if="activeView === 'directory' && canManageUsers" class="content-area"><DirectoryPanel @changed="loadUsers(); refresh()" /></section>
       <section v-else-if="['categories','cards','codes'].includes(activeView) && canManageUsers" class="content-area"><CatalogueSettings :initial-tab="catalogueTab" @changed="refresh" @success="showToast" /></section>
+      <section v-else-if="activeView === 'labels' && canManageUsers" class="content-area"><LabelTemplatesPanel @print="navigate('assets')" /></section>
       <section v-else-if="activeView === 'profile'" class="content-area profile-content"><MobileWorkbench :user="currentUser" :stats="stats" profile @navigate="navigate" @logout="logout" /></section>
       <section v-else-if="activeView === 'settings' && canManageUsers" class="content-area"><UserSettingsPanel :current-id="currentUser.id" :users="users" :can-write="canManageUsers" :busy="userBusy" :created="userCreated" @create="createUser" @reload="loadUsers" /></section>
       <section v-else class="content-area"><div class="panel placeholder-panel"><span class="eyebrow">{{ activeTitle }}</span><h2>这个模块将在下一阶段接入</h2><p>一期核心功能已经包含资产台账、二维码解析、Excel 导入、看板统计和流转记录。</p></div></section>
     </main>
     <nav class="mobile-bottom-nav" aria-label="手机主导航"><button v-for="item in mobileItems" :key="item.key" :class="{active:isMobileTab(item.key), 'mobile-scan-nav':item.key==='scan'}" :aria-current="isMobileTab(item.key)?'page':undefined" @click="navigate(item.key)"><span><AppIcon :name="item.icon" :size="23" /></span><small>{{ item.label }}</small></button></nav>
+    <LabelPrintDialog v-if="labelCodes.length && canWrite" :codes="labelCodes" :can-edit="canManageUsers" @close="labelCodes=[]" @settings="labelSettings" />
     <AssetFormDialog v-if="assetFormOpen" :asset="editingAsset" @close="assetFormOpen=false; editingAsset=null" @saved="assetSaved" @directory="formDirectory" />
-    <AssetDetailDrawer :asset="selected" :preference-key="String(currentUser.id)" :employee-only="employeeOnly" :can-apply="canRequest" :allowed-flows="selected ? allowedAssetFlows([selected], currentUser) : []" :can-write="canWrite" @close="selected = null" @edit="editSelected" @event="startFlow" @flow="openFlow"  />
+    <AssetDetailDrawer :asset="selected" :preference-key="String(currentUser.id)" :employee-only="employeeOnly" :can-apply="canRequest" :allowed-flows="selected ? allowedAssetFlows([selected], currentUser) : []" :can-write="canWrite" @close="selected = null" @edit="editSelected" @print="selected && printLabels([selected.asset_code])" @event="startFlow" @flow="openFlow"  />
     <dialog v-if="importPreview" ref="importDialog" class="import-modal" aria-labelledby="import-title" @cancel="cancelImport"><span class="eyebrow">导入预览</span><h2 id="import-title">{{ importPreview.fileName }}</h2><p>确认后按资产编码更新资料；已有资产的状态和归属变化请走审批，相关行将跳过。空值保留原值，明确的 0 更新金额。预览 30 分钟内有效。</p><div class="import-stats"><div><strong>{{ importPreview.preview.newRows }}</strong><span>新增</span></div><div><strong>{{ importPreview.preview.updatedRows }}</strong><span>更新</span></div><div><strong>{{ importPreview.preview.unchangedRows }}</strong><span>无变化</span></div><div class="danger"><strong>{{ importPreview.preview.invalidRows }}</strong><span>异常</span></div></div><p v-if="error" class="scan-error" role="alert">{{ error }}</p><div v-if="importPreview.errors?.length" class="import-errors"><strong>异常行（将跳过）</strong><p v-for="(item, index) in importPreview.errors" :key="index">第 {{ item.row }} 行 · {{ item.assetCode || '无资产编码' }}：{{ item.reason }}</p></div><details v-if="importPreview.changes?.length" class="import-differences"><summary>查看 {{ importPreview.changes.length }} 项资产的资料差异</summary><div v-for="change in importPreview.changes" :key="change.assetCode"><strong>{{ change.assetCode }}</strong><p v-for="field in change.fields" :key="field.field">{{ field.field }}：{{ field.before || '空' }} → {{ field.after }}</p></div></details><div class="form-actions"><button class="secondary-button" :disabled="importBusy" autofocus @click="importPreview = null">取消</button><button class="primary-button" :disabled="importBusy || !(importPreview.preview.newRows + importPreview.preview.updatedRows + importPreview.preview.unchangedRows)" @click="confirmImport">{{ importBusy ? '导入中…' : '确认导入' }}</button></div></dialog>
   </div>
 </template>

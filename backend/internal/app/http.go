@@ -126,7 +126,7 @@ func (a *App) Handler() http.Handler {
 			w.Header().Set("Access-Control-Allow-Origin", a.Config.AllowedOrigin)
 			w.Header().Set("Vary", "Origin")
 			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
-			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 			w.Header().Set("Access-Control-Expose-Headers", "Content-Disposition")
 		}
 		if r.Method == "OPTIONS" {
@@ -240,6 +240,18 @@ func (a *App) routes() {
 	m.HandleFunc("GET /api/directory/mappings", a.mappings)
 	m.HandleFunc("POST /api/directory/mappings/batch", a.bindEmployeesBatch)
 	m.HandleFunc("POST /api/directory/mappings/{code}", a.bindEmployee)
+	m.HandleFunc("GET /api/labels/templates", a.listLabelTemplates)
+	m.HandleFunc("POST /api/labels/templates", a.saveLabelTemplate)
+	m.HandleFunc("PATCH /api/labels/templates/{id}", a.saveLabelTemplate)
+	m.HandleFunc("DELETE /api/labels/templates/{id}", a.deleteLabelTemplate)
+	m.HandleFunc("POST /api/labels/assets", a.labelAssets)
+	m.HandleFunc("GET /a/{code}", func(w http.ResponseWriter, r *http.Request) {
+		if !codePattern.MatchString(r.PathValue("code")) || a.Config.FrontendDir == "" {
+			http.NotFound(w, r)
+			return
+		}
+		http.ServeFile(w, r, strings.TrimRight(a.Config.FrontendDir, "/\\")+"/index.html")
+	})
 	m.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) { send(w, 404, Row{"message": "接口不存在"}) })
 	if a.Config.FrontendDir != "" {
 		m.Handle("/", http.FileServer(http.Dir(a.Config.FrontendDir)))

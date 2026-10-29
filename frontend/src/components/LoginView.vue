@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue';
 import { api } from '../api';
+import { assetLabelCode } from '../assetLabels';
 import type { AuthUser } from '../types';
 import BrandLogo from './BrandLogo.vue';
 import AppIcon from './AppIcon.vue';
@@ -50,7 +51,8 @@ function loginWithSSO(silent = false) {
   ssoBusy.value = true;
   localStorage.removeItem('asset_token');
   const flow = new URLSearchParams(window.location.search).get('flow');
-  const params = new URLSearchParams({ return: flow && /^\d{1,15}$/.test(flow) ? `/?flow=${flow}` : '/' });
+  const assetCode = assetLabelCode(window.location.pathname);
+  const params = new URLSearchParams({ return: assetCode ? `/a/${assetCode}` : flow && /^\d{1,15}$/.test(flow) ? `/?flow=${flow}` : '/' });
   if (silent) params.set('silent', '1');
   window.location.assign(`/auth/login?${params}`);
 }

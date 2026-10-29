@@ -13,6 +13,7 @@ const items = [
   { key: 'companies', icon: 'building', label: '公司管理', group: '基础设置' },
   { key: 'directory', icon: 'users', label: '组织与人员', group: '基础设置' },
   { key: 'categories', icon: 'grid', label: '分类与卡片', group: '基础设置' },
+  { key: 'labels', icon: 'printer', label: '标签样式', group: '基础设置' },
   { key: 'settings', icon: 'settings', label: '系统设置', group: '基础设置' },
 ];
 </script>
