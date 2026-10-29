@@ -141,7 +141,7 @@ func (a *App) createFlow(w http.ResponseWriter, r *http.Request) {
 	if flowPrefixes[kind] == "" {
 		fail(400, "请选择有效流转类型")
 	}
-	if restricted(u) && !contains([]string{"领用", "归还", "交接", "维修", "报失"}, kind) {
+	if restricted(u) && !contains([]string{"归还", "交接", "维修", "报失"}, kind) {
 		fail(403, "员工不能发起此类管理操作")
 	}
 	rawCodes, ok := b["assetCodes"].([]any)
@@ -255,11 +255,7 @@ func (a *App) createFlow(w http.ResponseWriter, r *http.Request) {
 				fail(404, "资产不存在："+code)
 			}
 			if restricted(u) {
-				if kind == "领用" {
-					if v["status"] != "空闲" || v["assignee_employee_id"] != nil || str(v["assignee"]) != "" {
-						fail(403, "无权为该资产发起领用")
-					}
-				} else if num(v["assignee_employee_id"]) != num(u["employee_id"]) {
+				if num(v["assignee_employee_id"]) != num(u["employee_id"]) {
 					fail(403, "无权为该资产发起申请")
 				}
 			}

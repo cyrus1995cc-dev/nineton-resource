@@ -21,8 +21,8 @@ const items = [
   <aside class="sidebar">
     <div class="brand"><BrandLogo /></div>
     <nav>
-      <template v-for="group in ['', '资产管理', '基础设置']" :key="group"><span v-if="group && (group !== '基础设置' || canManage)" class="nav-group-label">{{ group }}</span><button v-for="item in items.filter((i) => i.group === group && !(employeeOnly && ['inventory', 'settings', 'companies', 'directory', 'categories'].includes(i.key)) && (i.group !== '基础设置' || canManage))" :key="item.key" class="nav-item" :class="{ active: active === item.key || item.key === 'categories' && ['cards','codes'].includes(active) }" :aria-current="active === item.key ? 'page' : undefined" @click="emit('navigate', item.key)"><AppIcon :name="item.icon" /><span>{{ item.key === 'assets' && employeeOnly ? '可领用资产' : item.label }}</span></button></template>
+      <template v-for="group in ['', '资产管理', '基础设置']" :key="group"><span v-if="group && (group !== '基础设置' || canManage)" class="nav-group-label">{{ group }}</span><button v-for="item in items.filter((i) => i.group === group && !(employeeOnly && ['assets', 'inventory', 'settings', 'companies', 'directory', 'categories'].includes(i.key)) && (i.group !== '基础设置' || canManage))" :key="item.key" class="nav-item" :class="{ active: active === item.key || item.key === 'categories' && ['cards','codes'].includes(active) }" :aria-current="active === item.key ? 'page' : undefined" @click="emit('navigate', item.key)"><AppIcon :name="item.icon" /><span>{{ item.label }}</span></button></template>
     </nav>
-    <div class="sidebar-footer"><span>管理范围</span><strong>{{ employeeOnly ? '本人及审批相关资产' : '全部资产' }}</strong></div>
+    <div class="sidebar-footer"><span>管理范围</span><strong>{{ employeeOnly ? '本人领用的资产' : '全部资产' }}</strong></div>
   </aside>
 </template>

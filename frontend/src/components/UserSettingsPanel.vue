@@ -33,13 +33,13 @@ async function saveUser(user: ManagedUser) { accountBusy.value = user.id; accoun
 const username = ref('');
 const displayName = ref('');
 const password = ref('');
-const role = ref<ManagedUser['role']>('viewer');
+const role = ref<ManagedUser['role']>('employee');
 
 function submit() {
   if (props.busy || !props.canWrite || !username.value.trim() || !password.value) return;
   emit('create', { username: username.value.trim(), display_name: displayName.value.trim(), password: password.value, role: role.value });
 }
-watch(() => props.created, () => { username.value = ''; displayName.value = ''; password.value = ''; role.value = 'viewer'; });
+watch(() => props.created, () => { username.value = ''; displayName.value = ''; password.value = ''; role.value = 'employee'; });
 </script>
 
 <template>

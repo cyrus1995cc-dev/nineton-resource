@@ -22,7 +22,7 @@ const assetSearch = ref(''); const candidates = ref<Asset[]>([]); const assetPag
 let listSequence = 0; let assetSequence = 0; let detailSequence = 0;
 const form = reactive<FlowInput>({ type: '领用', assetCodes: [], applicantDepartment: '', approverIds: [0], toAssignee: '', toDepartment: '', toLocation: '', note: '', requestId: '' });
 const selectableApprovers = computed(() => approvers.value.filter((a) => a.id !== props.user.id));
-const allowedTypes = computed(() => draftAssets.value.length ? allowedAssetFlows(draftAssets.value, props.user) : flowTypes.filter(type => !employeeOnly.value || ['领用', '归还', '交接', '维修', '报失'].includes(type)));
+const allowedTypes = computed(() => draftAssets.value.length ? allowedAssetFlows(draftAssets.value, props.user) : flowTypes.filter(type => !employeeOnly.value || ['归还', '交接', '维修', '报失'].includes(type)));
 const currentStep = computed(() => detail.value?.steps.find((s) => s.status === 'pending'));
 const canApprove = computed(() => ['admin', 'asset_manager', 'approver'].includes(props.user.role) && detail.value?.flow.status === 'pending' && currentStep.value?.approver_id === props.user.id);
 const canWithdraw = computed(() => props.canWrite && detail.value?.flow.status === 'pending' && detail.value.flow.applicant_id === props.user.id);
@@ -46,13 +46,13 @@ function updateUrl(id?: number) { const url = new URL(window.location.href); if 
 function closeDetail() { detailSequence++; detail.value = null; loading.value = false; error.value = ''; updateUrl(); void loadList(); }
 async function loadCandidates() {
   const sequence = ++assetSequence; assetLoading.value = true;
-  try { const result = await api.listAssets({ search: assetSearch.value, page: assetPage.value, pageSize: 10, scope: employeeOnly.value ? (form.type === '领用' ? 'available' : 'mine') : '' }); if (sequence === assetSequence) { candidates.value = result.items; assetTotal.value = result.total; } }
+  try { const result = await api.listAssets({ search: assetSearch.value, page: assetPage.value, pageSize: 10, scope: employeeOnly.value ? 'mine' : '' }); if (sequence === assetSequence) { candidates.value = result.items; assetTotal.value = result.total; } }
   catch (err) { if (sequence === assetSequence) showError(err); } finally { if (sequence === assetSequence) assetLoading.value = false; }
 }
 async function startDraft(assets: Asset[] = [], type?: FlowType) {
   const asset = assets[0];
   error.value = ''; draftAssets.value = [...assets];
-  Object.assign(form, { type: type ?? (asset ? availableFlowTypes(asset.status)[0] : '领用'), applicantDepartment: props.user.department || asset?.department || '', approverIds: [0], toAssignee: '', toEmployeeId: null, toDepartment: '', toLocation: '', note: '', requestId: crypto.randomUUID() });
+  Object.assign(form, { type: type ?? (asset ? (allowedAssetFlows([asset], props.user)[0] ?? '归还') : employeeOnly.value ? '归还' : '领用'), applicantDepartment: props.user.department || asset?.department || '', approverIds: [0], toAssignee: '', toEmployeeId: null, toDepartment: '', toLocation: '', note: '', requestId: crypto.randomUUID() });
   assetSearch.value = ''; assetPage.value = 1; creating.value = true; await nextTick(); dialog.value?.showModal();
   try { const options = await api.flowOptions(); approvers.value = options.approvers; employees.value = options.employees; if (employeeOnly.value && form.type === '领用') { form.toEmployeeId = props.user.employee_id; selectEmployee(); } } catch (err) { showError(err); }
   void loadCandidates();

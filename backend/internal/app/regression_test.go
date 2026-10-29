@@ -122,7 +122,7 @@ func TestMySQLDirectoryAndEmployeeScope(t *testing.T) {
 		t.Fatal("same-name isolation", mine)
 	}
 	employee.call("GET", "/api/assets/ZC-202", nil, 404)
-	employee.call("GET", "/api/assets/ZC-203", nil, 200)
+	employee.call("GET", "/api/assets/ZC-203", nil, 404)
 	employee.call("GET", "/api/inventory/tasks", nil, 403)
 	employee.call("GET", "/api/directory/status", nil, 403)
 	failUpstream = true

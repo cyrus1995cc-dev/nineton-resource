@@ -105,7 +105,7 @@ func TestMySQLAssetWorkspace(t *testing.T) {
 	for _, scope := range []struct {
 		name  string
 		total int64
-	}{{"mine", 1}, {"available", 4}, {"", 1}} {
+	}{{"mine", 1}, {"available", 1}, {"", 1}} {
 		options := employee.call("GET", "/api/assets/options?scope="+scope.name, nil, 200)
 		if num(options["total"]) != scope.total {
 			t.Fatal("scoped options", scope.name, options)
@@ -113,18 +113,48 @@ func TestMySQLAssetWorkspace(t *testing.T) {
 		if strings.Contains(js(options), "保密") {
 			t.Fatal("private filter options leaked", options)
 		}
+		list := employee.call("GET", "/api/assets?scope="+scope.name, nil, 200)
+		if num(list["total"]) != 1 || strings.Contains(js(list), "WS-002") || strings.Contains(js(list), "WS-003") {
+			t.Fatal("asset list scope bypass", scope.name, list)
+		}
 	}
+	employee.call("GET", "/api/assets/WS-001", nil, 200)
+	for _, code := range []string{"WS-002", "WS-003", "WS-007"} {
+		employee.call("GET", "/api/assets/"+code+"?scope=available", nil, 404)
+	}
+	if got := employee.call("GET", "/api/stats", nil, 200); num(got["total"]) != 1 || strings.Contains(js(got), "保密") {
+		t.Fatal("statistics ownership leak", got)
+	}
+	employee.call("POST", "/api/flows", Row{"type": "领用", "assetCodes": []string{"WS-003"}}, 403)
 	if got := workspaceExportCodes(t, employee, "code=WS-002"); len(got) != 0 {
 		t.Fatal("selected export bypassed ownership", got)
 	}
 	if got := workspaceExportCodes(t, employee, "scope=mine&code=WS-001&code=WS-002"); !reflect.DeepEqual(got, []string{"WS-001"}) {
 		t.Fatal("mine export", got)
 	}
-	if got := workspaceExportCodes(t, employee, "scope=available&code=WS-001&code=WS-003"); !reflect.DeepEqual(got, []string{"WS-003"}) {
+	if got := workspaceExportCodes(t, employee, "scope=available&code=WS-001&code=WS-003"); !reflect.DeepEqual(got, []string{"WS-001"}) {
 		t.Fatal("available export", got)
 	}
 	options := c.call("GET", "/api/assets/options", nil, 200)
 	if num(options["total"]) != 7 {
 		t.Fatal("admin options", options)
 	}
+	// Approval access grants a document snapshot, never general ledger access.
+	exec(ctx, a.DB, "UPDATE users SET role='approver' WHERE id=?", user["id"])
+	f := c.call("POST", "/api/flows", Row{"type": "维修", "assetCodes": []string{"WS-003"}, "applicantDepartment": "行政", "approverIds": []any{user["id"]}, "note": "检修", "requestId": "workspace-private-approval"}, 201)["flow"].(map[string]any)
+	employee.call("GET", "/api/flows/"+str(f["id"]), nil, 200)
+	employee.call("GET", "/api/assets/WS-003", nil, 404)
+	if got := employee.call("GET", "/api/assets?scope=available", nil, 200); num(got["total"]) != 1 {
+		t.Fatal("approval expanded asset scope", got)
+	}
+	if got := workspaceExportCodes(t, employee, "scope=available&code=WS-003"); len(got) != 0 {
+		t.Fatal("approval expanded export scope", got)
+	}
+	exec(ctx, a.DB, "UPDATE users SET employee_id=NULL WHERE id=?", user["id"])
+	for _, query := range []string{"", "?scope=available", "?scope=mine", "?search=同名"} {
+		if got := employee.call("GET", "/api/assets"+query, nil, 200); num(got["total"]) != 0 {
+			t.Fatal("unlinked identity can browse assets", got)
+		}
+	}
+	employee.call("GET", "/api/assets/WS-001", nil, 404)
 }

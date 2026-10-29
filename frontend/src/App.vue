@@ -66,7 +66,7 @@ const canWrite = computed(() => currentUser.value?.role === 'admin' || currentUs
 const employeeOnly = computed(() => ['employee', 'approver'].includes(currentUser.value?.role ?? ''));
 const canRequest = computed(() => !!currentUser.value && !['viewer', 'guest'].includes(currentUser.value.role));
 const canManageUsers = computed(() => currentUser.value?.role === 'admin');
-const activeTitle = computed(() => ({ dashboard: '经营分析看板', 'my-assets': '我的资产', assets: employeeOnly.value ? '可领用资产' : '资产清单', scan: '扫码查询', events: '资产流转', inventory: '资产盘点', companies: '公司管理', directory: '组织与人员', settings: '账号与权限', categories: '资产基础设置', cards: '资产基础设置', codes: '资产基础设置', profile: '我的' }[activeView.value] ?? '九吨资产'));
+const activeTitle = computed(() => ({ dashboard: employeeOnly.value ? '我的工作台' : '经营分析看板', 'my-assets': '我的资产', assets: employeeOnly.value ? '我的资产' : '资产清单', scan: '扫码查询', events: '资产流转', inventory: '资产盘点', companies: '公司管理', directory: '组织与人员', settings: '账号与权限', categories: '资产基础设置', cards: '资产基础设置', codes: '资产基础设置', profile: '我的' }[activeView.value] ?? '九吨资产'));
 watch(importPreview, async (preview) => { if (preview) { await nextTick(); if (importPreview.value && !importDialog.value?.open) importDialog.value?.showModal(); } });
 function cancelImport(event: Event) { if (importBusy.value) event.preventDefault(); else importPreview.value = null; }
 
@@ -140,7 +140,7 @@ async function confirmImport() {
   finally { importBusy.value = false; }
 }
 function navigate(view: string) {
-  activeView.value = view;
+  activeView.value = employeeOnly.value && view === 'assets' ? 'my-assets' : view;
   void nextTick(() => window.scrollTo(0, 0));
   const url = new URL(window.location.href); url.searchParams.delete('flow'); window.history.replaceState(null, '', url);
   flowId.value = null; flowDraft.value = null;
@@ -164,12 +164,12 @@ onBeforeUnmount(() => { window.removeEventListener(SESSION_EXPIRED_EVENT, resetS
 
       <MobileWorkbench v-if="activeView === 'dashboard'" class="mobile-only" :user="currentUser" :stats="stats" @navigate="navigate" @create="newAsset" />
       <section v-if="activeView === 'dashboard'" class="content-area desktop-dashboard">
-        <div class="metrics-grid"><MetricCard label="资产总数" :value="stats.total" tone="blue" hint="当前资产台账" /><MetricCard label="在用资产" :value="inUse" tone="green" :hint="stats.total ? `${Math.round(inUse / stats.total * 100)}% 使用中` : '暂无数据'" /><MetricCard label="空闲资产" :value="idle" tone="orange" :hint="stats.total ? `${Math.round(idle / stats.total * 100)}% 可分配` : '暂无数据'" /></div>
+        <div class="metrics-grid"><MetricCard :label="employeeOnly ? '我的资产' : '资产总数'" :value="stats.total" tone="blue" hint="当前资产台账" /><MetricCard label="在用资产" :value="inUse" tone="green" :hint="stats.total ? `${Math.round(inUse / stats.total * 100)}% 使用中` : '暂无数据'" /><MetricCard label="空闲资产" :value="idle" tone="orange" :hint="stats.total ? `${Math.round(idle / stats.total * 100)}% 可分配` : '暂无数据'" /></div>
         <div class="dashboard-grid"><article class="panel wide-panel"><div class="panel-header"><div><span class="eyebrow">状态分布</span><h2>资产使用情况</h2></div><button class="text-button" @click="navigate('assets')">查看清单 →</button></div><div class="status-visual"><div class="donut" :style="{ background: donutBackground }"><div><strong>{{ stats.total }}</strong><span>项资产</span></div></div><div class="legend"><div><i class="legend-dot green"></i><span>在用</span><strong>{{ inUse }}</strong></div><div><i class="legend-dot orange"></i><span>空闲</span><strong>{{ idle }}</strong></div><div v-for="[name, count] in otherStatuses" :key="name"><i class="legend-dot gray"></i><span>{{ name }}</span><strong>{{ count }}</strong></div></div></div></article><article class="panel"><div class="panel-header"><div><span class="eyebrow">分类统计</span><h2>资产分类</h2></div><span class="panel-count">{{ stats.categories.length }} 类</span></div><div class="bar-list"><div v-for="item in stats.categories.slice(0, 6)" :key="item.name" class="bar-row"><div class="bar-label"><span>{{ item.name }}</span><strong>{{ item.count }}</strong></div><div class="bar-track"><i :style="{ width: `${Math.max(4, item.count / Math.max(stats.categories[0]?.count ?? 1, 1) * 100)}%` }"></i></div></div></div></article></div>
         <div class="dashboard-grid three"><article class="panel"><div class="panel-header"><div><span class="eyebrow">位置统计</span><h2>楼层分布</h2></div></div><div class="simple-list"><div v-for="item in stats.locations.slice(0, 6)" :key="item.name"><span>{{ item.name }}</span><strong>{{ item.count }}</strong></div></div></article><article class="panel"><div class="panel-header"><div><span class="eyebrow">公司统计</span><h2>所属公司</h2></div></div><div class="simple-list"><div v-for="item in stats.companies.slice(0, 6)" :key="item.name"><span class="truncate">{{ item.name }}</span><strong>{{ item.count }}</strong></div></div></article><article class="panel quick-panel"><span class="eyebrow">快捷操作</span><h2>开始管理资产</h2><button class="quick-action" @click="navigate('assets')">查看资产清单 <AppIcon name="chevron" :size="16" /></button><button class="quick-action" @click="navigate('scan')">扫描二维码查询 <AppIcon name="scan" :size="16" /></button><button v-if="canWrite" class="quick-action" :disabled="importBusy" @click="importInput?.click()">批量导入 Excel <AppIcon name="upload" :size="16" /></button></article></div>
       </section>
 
-      <section v-else-if="['assets', 'my-assets'].includes(activeView)" class="content-area workspace-content"><AssetWorkspace :key="activeView" :user="currentUser" :scope="activeView === 'my-assets' ? 'mine' : employeeOnly ? 'available' : ''" :reload="assetsRevision" :import-busy="importBusy" @select="selectAsset" @create="newAsset" @flow="startAssetFlow" @import="importInput?.click()" @success="showToast" /></section>
+      <section v-else-if="['assets', 'my-assets'].includes(activeView)" class="content-area workspace-content"><AssetWorkspace :key="activeView" :user="currentUser" :scope="activeView === 'my-assets' || employeeOnly ? 'mine' : ''" :reload="assetsRevision" :import-busy="importBusy" @select="selectAsset" @create="newAsset" @flow="startAssetFlow" @import="importInput?.click()" @success="showToast" /></section>
 
       <section v-else-if="activeView === 'events'" class="content-area"><FlowPanel :user="currentUser" :can-write="canRequest" :draft="flowDraft" :initial-id="flowId" @changed="refresh" @success="showToast" @settings="navigate('settings')" /></section>
 

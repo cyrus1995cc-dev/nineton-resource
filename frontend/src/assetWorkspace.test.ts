@@ -14,7 +14,7 @@ describe('asset workspace permissions and bulk operations', () => {
     expect(allowedAssetFlows([asset('空闲')], { ...admin, role: 'viewer' })).toEqual([]);
   });
   it('requires a linked employee identity and exact ownership', () => {
-    expect(allowedAssetFlows([asset('空闲')], employee)).toEqual(['领用']);
+    expect(allowedAssetFlows([asset('空闲')], employee)).toEqual([]);
     expect(allowedAssetFlows([asset('在用', 8, '本人')], employee)).toEqual(['归还', '交接', '维修', '报失']);
     expect(allowedAssetFlows([asset('在用', 9, '同名')], employee)).toEqual([]);
     expect(allowedAssetFlows([asset('在用')], { ...employee, employee_id: null })).toEqual([]);

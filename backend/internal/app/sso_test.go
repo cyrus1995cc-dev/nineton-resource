@@ -162,11 +162,11 @@ func TestOIDCProvisioningAndControlledBinding(t *testing.T) {
 		}
 	}
 	// No name-based account, employee or historical-asset matching. New staff
-	// can browse available stock but cannot inspect another employee's assets.
+	// cannot browse stock or another employee's assets before identity linking.
 	seed(ctx, a.DB, "SSO-IDLE", "空闲")
 	seed(ctx, a.DB, "SSO-PRIVATE", "在用")
 	result := cookieRequest(a, cookie, "GET", "/api/assets?scope=available", "")
-	if result.Code != 200 || !strings.Contains(result.Body.String(), "SSO-IDLE") || strings.Contains(result.Body.String(), "SSO-PRIVATE") {
+	if result.Code != 200 || strings.Contains(result.Body.String(), "SSO-IDLE") || strings.Contains(result.Body.String(), "SSO-PRIVATE") {
 		t.Fatal("ordinary employee available asset scope")
 	}
 	result = cookieRequest(a, cookie, "GET", "/api/assets?scope=mine", "")

@@ -83,7 +83,7 @@
 .scan-card .full-button { min-height: 48px; }
 .scan-card .scan-field input { min-height: 48px; font-size: 16px; }
 .scan-more-dialog .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-@media (max-width: 760px) {
+@media (max-width: 760px), (max-width:1000px) and (max-height:500px) and (pointer:coarse) {
   .drawer.asset-info-drawer { width: 100%; padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
   .asset-detail-header { grid-template-columns: 52px minmax(0, 1fr) 52px; padding-inline: 8px; }
   .asset-detail-scroll { padding: 12px; }

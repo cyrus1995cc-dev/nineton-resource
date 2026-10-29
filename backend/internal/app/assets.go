@@ -76,7 +76,7 @@ func parseQR(raw string) (string, string) {
 	}
 	return "", "unknown"
 }
-func scope(u Row, available bool, alias string) (string, []any) {
+func scope(u Row, alias string) (string, []any) {
 	if !restricted(u) {
 		return "1=1", nil
 	}
@@ -84,17 +84,14 @@ func scope(u Row, available bool, alias string) (string, []any) {
 		alias = "assets"
 	}
 	p := alias + "."
-	if available {
-		return p + "status='空闲' AND " + p + "assignee_employee_id IS NULL AND COALESCE(" + p + "assignee,'')=''", nil
-	}
 	emp := u["employee_id"]
 	if emp == nil {
 		emp = -1
 	}
-	return "(" + p + "assignee_employee_id=? OR EXISTS (SELECT 1 FROM asset_flow_items si JOIN asset_flow_steps ss ON ss.flow_id=si.flow_id JOIN asset_flows sf ON sf.id=si.flow_id WHERE si.asset_id=" + p + "id AND ss.approver_id=? AND sf.status='pending'))", []any{emp, u["id"]}
+	return p + "assignee_employee_id=?", []any{emp}
 }
 func assetWhere(u Row, f url.Values) (string, []any) {
-	clause, args := scope(u, f.Get("scope") == "available", "")
+	clause, args := scope(u, "")
 	if f.Get("scope") == "mine" {
 		clause = "assignee_employee_id=?"
 		emp := u["employee_id"]
@@ -210,16 +207,16 @@ func (a *App) getAsset(w http.ResponseWriter, r *http.Request) {
 	u := actor(r)
 	code := r.PathValue("code")
 	if restricted(u) {
-		clause, args := scope(u, false, "")
-		available, _ := scope(u, true, "")
+		clause, args := scope(u, "")
 		args = append([]any{code}, args...)
-		if !exists(ctx, a.DB, "SELECT id FROM assets WHERE asset_code=? AND ("+clause+" OR ("+available+"))", args...) {
+		if !exists(ctx, a.DB, "SELECT id FROM assets WHERE asset_code=? AND ("+clause+")", args...) {
 			fail(404, "资产不存在或无权查看")
 		}
 	}
 	v := assetDetail(ctx, a.DB, code)
-	if restricted(u) && v["status"] == "空闲" && (u["employee_id"] == nil || num(v["assignee_employee_id"]) != num(u["employee_id"])) {
-		v["events"] = []Row{}
+	// Recheck the returned row in case ownership changed after the scoped lookup.
+	if restricted(u) && (u["employee_id"] == nil || num(v["assignee_employee_id"]) != num(u["employee_id"])) {
+		fail(404, "资产不存在或无权查看")
 	}
 	send(w, 200, v)
 }
@@ -332,7 +329,7 @@ func writeEvent(ctx context.Context, q DBTX, old Row, kind, operator, note strin
 }
 func (a *App) stats(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	where, args := scope(actor(r), false, "")
+	where, args := scope(actor(r), "")
 	where = " WHERE " + where
 	total := one(ctx, a.DB, "SELECT COUNT(*) AS n FROM assets"+where, args...)["n"]
 	status := Row{}

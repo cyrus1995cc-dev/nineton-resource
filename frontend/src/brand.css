@@ -135,7 +135,7 @@ h1 { font-weight: 700; }
   .login-layout .login-card { padding: 40px 28px; }
   .login-feature-list { gap: 8px; }.login-feature-list svg { display: none; }
 }
-@media (max-width: 760px) {
+@media (max-width: 760px), (max-width:1000px) and (max-height:500px) and (pointer:coarse) {
   .sidebar, .asset-mode .sidebar { width: 100%; flex-basis: auto; }
   .brand, .asset-mode .brand { height: 68px; padding: 0 16px; }
   .brand-logo-image { width: 44px; height: 44px; }.brand-logo-copy strong { font-size: 20px; }.brand-logo-copy > span { font-size: 10px; }

@@ -26,10 +26,10 @@ const shortcutDraft = ref<FlowType[]>([]);
 const drawer = ref<HTMLElement | null>(null);
 let previousFocus: HTMLElement | null = null;
 let previousOverflow = '';
-const actions = computed(() => props.allowedFlows ?? (props.asset ? availableFlowTypes(props.asset.status).filter((type) => !props.employeeOnly || ['领用', '归还', '交接', '维修', '报失'].includes(type)) : []));
+const actions = computed(() => props.allowedFlows ?? (props.asset ? availableFlowTypes(props.asset.status).filter((type) => !props.employeeOnly || ['归还', '交接', '维修', '报失'].includes(type)) : []));
 const primaryActions = computed(() => visibleScanActions(shortcuts.value, actions.value));
 const primaryActionSummary = computed(() => primaryActions.value.map(type => scanActionLabels[type]).join('、') || '未设置');
-const employeeActions = computed(() => actions.value.filter(type => (props.employeeOnly ? ['领用', '归还', '交接', '维修', '报失'] : ['领用', '归还']).includes(type)));
+const employeeActions = computed(() => actions.value.filter(type => (props.employeeOnly ? ['归还', '交接', '维修', '报失'] : ['领用', '归还']).includes(type)));
 const managerActions = computed(() => actions.value.filter(type => !employeeActions.value.includes(type)));
 const managerActionLabels = { ...scanActionLabels, 交接: '变更领用人', 维修: '资产维修' };
 watch(() => props.preferenceKey, () => {

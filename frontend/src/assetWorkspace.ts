@@ -44,10 +44,10 @@ export function allowedAssetFlows(assets: Asset[], user: AuthUser): FlowType[] {
   if (!assets.length || user.role === 'viewer') return [];
   const limited = ['employee', 'approver'].includes(user.role);
   if (limited && !user.employee_id) return [];
-  return flowTypes.filter(type => (!limited || ['领用', '归还', '交接', '维修', '报失'].includes(type)) && assets.every(a => {
+  return flowTypes.filter(type => (!limited || ['归还', '交接', '维修', '报失'].includes(type)) && assets.every(a => {
     if (!availableFlowTypes(a.status).includes(type)) return false;
     if (!limited) return true;
-    return type === '领用' ? !a.assignee_employee_id && !a.assignee : a.assignee_employee_id === user.employee_id;
+    return a.assignee_employee_id === user.employee_id;
   }));
 }
 export function pageNumbers(page: number, totalPages: number): Array<number | '…'> {
