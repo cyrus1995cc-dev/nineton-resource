@@ -52,14 +52,14 @@ const donutBackground = computed(() => {
 });
 const canWrite = computed(() => currentUser.value?.role === 'admin' || currentUser.value?.role === 'asset_manager');
 const employeeOnly = computed(() => ['employee', 'approver'].includes(currentUser.value?.role ?? ''));
-const canRequest = computed(() => !!currentUser.value && currentUser.value.role !== 'viewer');
+const canRequest = computed(() => !!currentUser.value && !['viewer', 'guest'].includes(currentUser.value.role));
 const canManageUsers = computed(() => currentUser.value?.role === 'admin');
 const activeTitle = computed(() => ({ dashboard: '经营分析看板', 'my-assets': '我的资产', assets: employeeOnly.value ? '可领用资产' : '资产清单', scan: '扫码查询', events: '资产流转', inventory: '资产盘点', companies: '公司管理', directory: '组织与人员', settings: '系统设置' }[activeView.value] ?? '九吨资产'));
 watch(importPreview, async (preview) => { if (preview) { await nextTick(); if (importPreview.value && !importDialog.value?.open) importDialog.value?.showModal(); } });
 function cancelImport(event: Event) { if (importBusy.value) event.preventDefault(); else importPreview.value = null; }
 
 async function loadStats() { stats.value = await api.getStats(); }
-async function refresh() { error.value = ''; assetsRevision.value++; try { await loadStats(); } catch (err) { error.value = err instanceof Error ? err.message : '数据加载失败'; } }
+async function refresh() { error.value = ''; if (currentUser.value?.role === 'guest') return; assetsRevision.value++; try { await loadStats(); } catch (err) { error.value = err instanceof Error ? err.message : '数据加载失败'; } }
 async function loadUsers() {
   if (!canManageUsers.value) { users.value = []; return; }
   try { users.value = (await api.listUsers()).users; }
@@ -67,7 +67,12 @@ async function loadUsers() {
 }
 async function bootstrapAuth() {
   authReady.value = false; authFailure.value = '';
-  try { if (localStorage.getItem('asset_token')) { currentUser.value = await api.me(); await refresh(); if (flowId.value) activeView.value = 'events'; } }
+  try {
+    currentUser.value = await api.me();
+    const url = new URL(window.location.href);
+    if (url.searchParams.has('silentSignin')) { url.searchParams.delete('silentSignin'); window.history.replaceState(null, '', url); }
+    await refresh(); if (flowId.value) activeView.value = 'events';
+  }
   catch (err) { if (!(err instanceof ApiError && err.status === 401)) authFailure.value = err instanceof Error ? err.message : '登录状态检查失败'; }
   finally { authReady.value = true; }
 }
@@ -80,7 +85,12 @@ function resetSession() {
   importPreview.value = null; users.value = []; error.value = ''; toast.value = ''; authFailure.value = '';
   if (toastTimer) clearTimeout(toastTimer);
 }
-async function logout() { await api.logout(); autoDingTalkLogin.value = false; resetSession(); }
+async function logout() {
+  try {
+    await api.logout(); autoDingTalkLogin.value = false;
+    window.history.replaceState(null, '', '/login'); resetSession();
+  } catch (err) { error.value = err instanceof Error ? err.message : '退出失败，请重试'; }
+}
 function returnToLogin() { localStorage.removeItem('asset_token'); resetSession(); }
 async function createUser(payload: { username: string; password: string; display_name: string; role: ManagedUser['role'] }) {
   userBusy.value = true;
@@ -143,6 +153,7 @@ onBeforeUnmount(() => { window.removeEventListener(SESSION_EXPIRED_EVENT, resetS
 <template>
   <div v-if="!authReady || authFailure" class="login-shell"><div class="login-card"><h1>{{ authFailure ? '连接暂时不可用' : '正在加载…' }}</h1><p class="login-intro" role="status">{{ authFailure || '正在检查登录状态' }}</p><div v-if="authFailure" class="form-actions"><button class="primary-button" @click="bootstrapAuth">重新连接</button><button class="secondary-button" @click="returnToLogin">返回登录</button></div></div></div>
   <LoginView v-else-if="!currentUser" :auto-ding-talk-login="autoDingTalkLogin" @logged-in="onLoggedIn" />
+  <main v-else-if="currentUser.role === 'guest'" class="login-shell"><section class="login-card"><h1>等待管理员授权</h1><p class="login-intro">{{ currentUser.display_name }}，你已完成统一登录。请联系管理员分配资产系统角色，或关联已有账号，完成后重新登录。</p><p v-if="error" class="error-banner" role="alert">{{ error }}</p><button class="secondary-button full-button" @click="logout">退出当前账号</button></section></main>
   <div v-else-if="authReady" class="app-shell" :class="{ 'asset-mode': ['assets', 'my-assets'].includes(activeView) }">
     <SidebarNav :active="activeView" :employee-only="employeeOnly" :can-manage="canManageUsers" @navigate="navigate" />
     <main class="main-shell">
@@ -164,7 +175,7 @@ onBeforeUnmount(() => { window.removeEventListener(SESSION_EXPIRED_EVENT, resetS
       <section v-else-if="activeView === 'inventory'" class="content-area"><InventoryPanel :locations="stats.locations" :can-write="canWrite" @error="(message) => { error = message; }" @success="showToast" /></section>
       <section v-else-if="activeView === 'companies' && canManageUsers" class="content-area"><CompanyPanel @changed="refresh" @directory="navigate('directory')" /></section>
       <section v-else-if="activeView === 'directory' && canManageUsers" class="content-area"><DirectoryPanel @changed="loadUsers(); refresh()" /></section>
-      <section v-else-if="activeView === 'settings' && canManageUsers" class="content-area"><UserSettingsPanel :current-id="currentUser.id" :users="users" :can-write="canManageUsers" :busy="userBusy" :created="userCreated" @create="createUser" /></section>
+      <section v-else-if="activeView === 'settings' && canManageUsers" class="content-area"><UserSettingsPanel :current-id="currentUser.id" :users="users" :can-write="canManageUsers" :busy="userBusy" :created="userCreated" @create="createUser" @reload="loadUsers" /></section>
       <section v-else class="content-area"><div class="panel placeholder-panel"><span class="eyebrow">{{ activeTitle }}</span><h2>这个模块将在下一阶段接入</h2><p>一期核心功能已经包含资产台账、二维码解析、Excel 导入、看板统计和流转记录。</p></div></section>
     </main>
     <AssetDetailDrawer :asset="selected" :employee-only="employeeOnly" :can-apply="canRequest" :allowed-flows="selected ? allowedAssetFlows([selected], currentUser) : []" :edit-busy="editBusy" :can-write="canWrite" @close="selected = null" @event="startFlow" @flow="openFlow" @update="updateAsset" />

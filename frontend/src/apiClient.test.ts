@@ -33,6 +33,18 @@ describe('authenticated API transport', () => {
     await expect(request('/api/assets')).rejects.toThrow('无法识别');
     await expect(request('/api/auth/logout')).resolves.toBeUndefined();
   });
+  it('uses HttpOnly same-origin cookies and expires cookie-only sessions', async () => {
+    const expired = vi.fn();
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({ message: '请先登录' }, { status: 401 }));
+    const request = createApiClient({ getToken: () => '', onSessionExpired: expired, fetch: fetchMock });
+    await expect(request('/api/auth/me')).rejects.toMatchObject({ status: 401 });
+    expect(fetchMock.mock.calls[0][1].credentials).toBe('same-origin');
+    expect(new Headers(fetchMock.mock.calls[0][1].headers).has('Authorization')).toBe(false);
+    expect(expired).toHaveBeenCalledOnce();
+    expired.mockClear();
+    await expect(request('/api/auth/sso/config')).rejects.toMatchObject({ status: 401 });
+    expect(expired).not.toHaveBeenCalled();
+  });
   it('ignores an old request after the user switches accounts', async () => {
     let token = 'old'; const expired = vi.fn();
     const request = createApiClient({ getToken: () => token, onSessionExpired: expired, fetch: async () => { token = 'new'; return Response.json({ message: '已过期' }, { status: 401 }); } });

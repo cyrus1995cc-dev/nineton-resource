@@ -68,7 +68,10 @@ func main() {
 		}
 	}
 	for _, table := range app.Tables() {
-		if table == "companies" || table == "employee_departments" || table == "company_names" {
+		if table == "session_policies" {
+			continue
+		} // Sessions are intentionally never migrated.
+		if table == "companies" || table == "employee_departments" || table == "company_names" || table == "external_identities" {
 			var exists int
 			die(read.QueryRowContext(ctx, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?", table).Scan(&exists))
 			if exists == 0 {
@@ -129,6 +132,9 @@ func main() {
 	fmt.Println("Migration committed; IDs, QR data, password hashes and history preserved. Sessions intentionally omitted; sign in again.")
 }
 func order(table string) string {
+	if table == "external_identities" {
+		return "`issuer`,`subject`"
+	}
 	if table == "company_names" {
 		return "`name`"
 	}

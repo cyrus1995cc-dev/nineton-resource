@@ -203,5 +203,5 @@ func Migrate(ctx context.Context, db *sql.DB) (err error) {
 	return nil
 }
 func Tables() []string {
-	return []string{"employees", "users", "assets", "asset_flows", "asset_events", "import_batches", "inventory_tasks", "inventory_records", "asset_flow_items", "asset_flow_steps", "asset_flow_logs", "asset_flow_comments", "notification_outbox", "asset_qr_aliases", "import_previews", "audit_logs", "departments", "directory_sync_runs", "system_settings", "companies", "employee_departments", "company_names"}
+	return []string{"employees", "users", "assets", "asset_flows", "asset_events", "import_batches", "inventory_tasks", "inventory_records", "asset_flow_items", "asset_flow_steps", "asset_flow_logs", "asset_flow_comments", "notification_outbox", "asset_qr_aliases", "import_previews", "audit_logs", "departments", "directory_sync_runs", "system_settings", "companies", "employee_departments", "company_names", "external_identities", "session_policies"}
 }

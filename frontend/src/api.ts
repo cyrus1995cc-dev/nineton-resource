@@ -1,6 +1,7 @@
 import type { Asset, AssetListResponse, AssetUpdateInput, AuthUser, ImportResponse, InventoryTask, InventoryTaskDetail, ManagedUser, Stats } from './types';
 import type { Employee, DirectoryStatus, EmployeeMapping, Company, CompanyInput } from './directory';
 import { createApiClient, type DownloadFile } from './apiClient';
+import { ApiError } from './apiClient';
 import type { Flow, FlowDetail, FlowInput } from '../shared/flows';
 import type { AssetFilters, AssetOptions } from './assetWorkspace';
 
@@ -21,6 +22,7 @@ export const api = {
     return result.user;
   },
   dingtalkConfig: () => request<{ enabled: boolean; corpId: string; clientId: string }>('/api/auth/dingtalk/config'),
+  ssoConfig: () => request<{ enabled: boolean; loginUrl: string }>('/api/auth/sso/config'),
   loginDingTalk: async (code: string) => {
     const result = await request<{ token: string; user: AuthUser }>('/api/auth/dingtalk/login', { method: 'POST', body: JSON.stringify({ code }) });
     localStorage.setItem('asset_token', result.token);
@@ -29,6 +31,7 @@ export const api = {
   me: async () => (await request<{ user: AuthUser }>('/api/auth/me')).user,
   listUsers: () => request<{ users: ManagedUser[] }>('/api/auth/users'),
   updateUser: (id: number, input: { role: AuthUser['role']; active: boolean; employee_id?: number | null }) => request(`/api/auth/users/${id}`, { method: 'PATCH', body: JSON.stringify(input) }),
+  bindSSOUser: (targetUserId: number, sourceUserId: number) => request(`/api/auth/users/${targetUserId}/sso-binding`, { method: 'POST', body: JSON.stringify({ sourceUserId }) }),
   listEmployees: (all = false) => request<{ employees: Employee[] }>(`/api/directory/employees?all=${all}`),
   directoryStatus: () => request<DirectoryStatus>('/api/directory/status'),
   listCompanies: () => request<{ companies: Company[] }>('/api/companies'),
@@ -43,7 +46,11 @@ export const api = {
   createUser: (input: { username: string; password: string; display_name: string; role: ManagedUser['role'] }) => request<{ user: ManagedUser }>('/api/auth/users', {
     method: 'POST', body: JSON.stringify(input),
   }),
-  logout: async () => { await request<void>('/api/auth/logout', { method: 'POST' }).catch(() => undefined); localStorage.removeItem('asset_token'); },
+  logout: async () => {
+    try { await request<void>('/api/auth/logout', { method: 'POST' }); }
+    catch (err) { if (!(err instanceof ApiError && err.status === 401)) throw err; }
+    localStorage.removeItem('asset_token');
+  },
   getStats: () => request<Stats>('/api/stats'),
   flowOptions: () => request<{ approvers: AuthUser[]; employees: Employee[]; notification: { mode: string; message: string } }>('/api/flows/options'),
   listFlows: (params: { scope: string; status: string; search: string; page: number }) => request<{ items: Flow[]; total: number; page: number; pageSize: number }>(`/api/flows?${new URLSearchParams(Object.entries(params).map(([k, v]) => [k, String(v)]))}`),

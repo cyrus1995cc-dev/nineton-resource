@@ -15,7 +15,7 @@ import (
 	"golang.org/x/crypto/scrypt"
 )
 
-var userRoles = []string{"admin", "asset_manager", "viewer", "employee", "approver"}
+var userRoles = []string{"admin", "asset_manager", "viewer", "employee", "approver", "guest"}
 
 func contains(list []string, v string) bool {
 	for _, s := range list {
@@ -71,16 +71,19 @@ func (a *App) resolve(ctx context.Context, token string) Row {
 	if token == "" {
 		return nil
 	}
-	u := one(ctx, a.DB, userJoin+"JOIN sessions s ON s.user_id=u.id WHERE s.token_hash=? AND s.expires_at>? AND "+validUser, hash(token), time.Now().UnixMilli())
+	now := time.Now().UnixMilli()
+	u := one(ctx, a.DB, userJoin+"JOIN sessions s ON s.user_id=u.id LEFT JOIN session_policies p ON p.token_hash=s.token_hash WHERE s.token_hash=? AND s.expires_at>? AND (p.idle_until IS NULL OR p.idle_until>?) AND "+validUser, hash(token), now, now)
 	if u == nil {
 		return nil
 	}
+	exec(ctx, a.DB, "UPDATE session_policies SET idle_until=LEAST(?,(SELECT expires_at FROM sessions WHERE token_hash=?)) WHERE token_hash=? AND idle_until>? AND idle_until<?", time.Now().Add(30*time.Minute).UnixMilli(), hash(token), hash(token), now, time.Now().Add(25*time.Minute).UnixMilli())
 	return publicUser(u)
 }
 func (a *App) session(ctx context.Context, q DBTX, u Row) Row {
 	token := randomID()
 	expires := time.Now().Add(8 * time.Hour).UnixMilli()
 	exec(ctx, q, "INSERT INTO sessions (user_id,token_hash,expires_at) VALUES (?,?,?)", u["id"], hash(token), expires)
+	exec(ctx, q, "INSERT INTO session_policies (token_hash,idle_until) VALUES (?,?)", hash(token), time.Now().Add(30*time.Minute).UnixMilli())
 	return Row{"token": token, "user": publicUser(u), "expiresAt": expires}
 }
 func (a *App) login(w http.ResponseWriter, r *http.Request) {
@@ -133,10 +136,19 @@ func (a *App) login(w http.ResponseWriter, r *http.Request) {
 }
 func users(ctx context.Context, q DBTX) []Row {
 	out := []Row{}
+	identities := map[int64]Row{}
+	for _, identity := range rows(ctx, q, "SELECT issuer,subject,user_id FROM external_identities") {
+		identities[num(identity["user_id"])] = Row{"issuer": identity["issuer"], "subject": identity["subject"]}
+	}
 	for _, u := range rows(ctx, q, userJoin+"ORDER BY u.id") {
 		v := publicUser(u)
 		v["active"] = num(u["active"]) == 1
 		v["created_at"] = u["created_at"]
+		identity, bound := identities[num(u["id"])]
+		v["sso_bound"] = bound
+		if bound {
+			v["sso_identity"] = identity
+		}
 		out = append(out, v)
 	}
 	return out

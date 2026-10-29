@@ -49,6 +49,22 @@ CREATE TABLE IF NOT EXISTS `sessions` (
   FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
 
+CREATE TABLE IF NOT EXISTS `external_identities` (
+  `issuer` VARCHAR(200) NOT NULL,
+  `subject` VARCHAR(200) NOT NULL,
+  `user_id` BIGINT NOT NULL,
+  `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (`issuer`,`subject`),
+  UNIQUE KEY `idx_external_user` (`user_id`,`issuer`),
+  FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
+
+CREATE TABLE IF NOT EXISTS `session_policies` (
+  `token_hash` VARCHAR(200) NOT NULL PRIMARY KEY,
+  `idle_until` BIGINT NOT NULL,
+  FOREIGN KEY (`token_hash`) REFERENCES `sessions` (`token_hash`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
+
 CREATE TABLE IF NOT EXISTS `assets` (
   `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   `asset_code` VARCHAR(200) NOT NULL DEFAULT '',

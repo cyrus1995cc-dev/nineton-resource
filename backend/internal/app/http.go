@@ -19,7 +19,10 @@ import (
 	"github.com/go-sql-driver/mysql"
 )
 
-type Config struct{ FrontendDir, AdminUsername, AdminPassword, DingID, DingSecret, DingCorp, DingAPI, DingOAPI, AllowedOrigin string }
+type Config struct {
+	FrontendDir, AdminUsername, AdminPassword, DingID, DingSecret, DingCorp, DingAPI, DingOAPI, AllowedOrigin string
+	SSOIssuer, SSOClientID, SSOClientSecret, SSORedirectURI, SSOScopes, SSOProviderHint                       string
+}
 type App struct {
 	DB         *sql.DB
 	Config     Config
@@ -34,6 +37,7 @@ type App struct {
 	tokenUntil time.Time
 	loginMu    sync.Mutex
 	attempts   map[string]attempt
+	sso        ssoState
 }
 type attempt struct {
 	count int
@@ -132,11 +136,17 @@ func (a *App) Handler() http.Handler {
 		r.Body = http.MaxBytesReader(w, r.Body, 21<<20)
 		if strings.HasPrefix(r.URL.Path, "/api/") {
 			w.Header().Set("Cache-Control", "no-store")
-			public := r.Method == "GET" && (r.URL.Path == "/api/health" || r.URL.Path == "/api/auth/dingtalk/config") || r.Method == "POST" && (r.URL.Path == "/api/auth/login" || r.URL.Path == "/api/auth/dingtalk/login")
+			if bearer(r) == "" && a.cookieToken(r) != "" && r.Method != "GET" && r.Method != "HEAD" {
+				a.checkRequestOrigin(r)
+			}
+			public := r.Method == "GET" && (r.URL.Path == "/api/health" || r.URL.Path == "/api/auth/dingtalk/config" || r.URL.Path == "/api/auth/sso/config") || r.Method == "POST" && (r.URL.Path == "/api/auth/login" || r.URL.Path == "/api/auth/dingtalk/login" || r.URL.Path == "/api/auth/logout")
 			if !public {
-				u := a.resolve(r.Context(), bearer(r))
+				u := a.resolve(r.Context(), a.requestToken(r))
 				if u == nil {
 					fail(401, "请先登录")
+				}
+				if u["role"] == "guest" && r.URL.Path != "/api/auth/me" {
+					fail(403, "账号等待管理员授权，暂不能访问资产数据")
 				}
 				r = r.WithContext(context.WithValue(r.Context(), actorKey, u))
 			}
@@ -173,9 +183,10 @@ func (a *App) routes() {
 	m.HandleFunc("POST /api/auth/login", a.login)
 	m.HandleFunc("GET /api/auth/me", func(w http.ResponseWriter, r *http.Request) { send(w, 200, Row{"user": actor(r)}) })
 	m.HandleFunc("POST /api/auth/logout", func(w http.ResponseWriter, r *http.Request) {
-		exec(r.Context(), a.DB, "DELETE FROM sessions WHERE token_hash = ?", hash(bearer(r)))
+		a.logoutSession(w, r)
 		w.WriteHeader(204)
 	})
+	a.ssoRoutes(m)
 	m.HandleFunc("GET /api/auth/dingtalk/config", func(w http.ResponseWriter, r *http.Request) {
 		send(w, 200, Row{"enabled": a.dingConfigured(), "corpId": a.Config.DingCorp, "clientId": a.Config.DingID})
 	})
@@ -183,6 +194,7 @@ func (a *App) routes() {
 	m.HandleFunc("GET /api/auth/users", a.users)
 	m.HandleFunc("POST /api/auth/users", a.createUser)
 	m.HandleFunc("PATCH /api/auth/users/{id}", a.updateUser)
+	m.HandleFunc("POST /api/auth/users/{id}/sso-binding", a.bindSSOIdentity)
 	m.HandleFunc("GET /api/assets", a.listAssets)
 	m.HandleFunc("GET /api/assets/options", a.assetOptions)
 	m.HandleFunc("GET /api/assets/{code}", a.getAsset)

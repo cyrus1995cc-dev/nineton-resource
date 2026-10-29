@@ -17,11 +17,11 @@ export function createApiClient(options: {
       headers.set('Content-Type', 'application/json');
     }
     let response: Response;
-    try { response = await (options.fetch ?? fetch)(`${options.baseUrl ?? ''}${path}`, { ...init, headers }); }
+    try { response = await (options.fetch ?? fetch)(`${options.baseUrl ?? ''}${path}`, { credentials: 'same-origin', ...init, headers }); }
     catch { throw new ApiError('无法连接服务器，请检查网络和服务是否已启动', 0); }
-    const publicPath = ['/api/auth/login', '/api/auth/dingtalk/login', '/api/auth/dingtalk/config'].includes(path);
-    if (token && !publicPath && token !== options.getToken()) throw new ApiError('登录状态已变更，请重新操作', 0);
-    if (response.status === 401 && token && !publicPath) options.onSessionExpired();
+    const publicPath = ['/api/auth/login', '/api/auth/dingtalk/login', '/api/auth/dingtalk/config', '/api/auth/sso/config'].includes(path);
+    if (!publicPath && token !== options.getToken()) throw new ApiError('登录状态已变更，请重新操作', 0);
+    if (response.status === 401 && !publicPath) options.onSessionExpired();
     if (response.status === 204) return undefined as T;
     if (response.ok && responseType === 'download') {
       if (!response.headers.get('Content-Type')?.includes('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')) throw new ApiError('服务器未返回 Excel 文件，请稍后重试', response.status);

@@ -34,6 +34,12 @@ func main() {
 	}
 	defer db.Close()
 	cfg := app.Config{FrontendDir: os.Getenv("FRONTEND_DIR"), AdminUsername: os.Getenv("ASSET_ADMIN_USERNAME"), AdminPassword: os.Getenv("ASSET_ADMIN_PASSWORD"), DingID: os.Getenv("DINGTALK_CLIENT_ID"), DingSecret: os.Getenv("DINGTALK_CLIENT_SECRET"), DingCorp: os.Getenv("DINGTALK_CORP_ID"), AllowedOrigin: os.Getenv("ALLOWED_ORIGIN")}
+	cfg.SSOIssuer = os.Getenv("SSO_ISSUER")
+	cfg.SSOClientID = os.Getenv("SSO_CLIENT_ID")
+	cfg.SSOClientSecret = os.Getenv("SSO_CLIENT_SECRET")
+	cfg.SSORedirectURI = os.Getenv("SSO_REDIRECT_URI")
+	cfg.SSOScopes = os.Getenv("SSO_SCOPES")
+	cfg.SSOProviderHint = os.Getenv("SSO_PROVIDER_HINT")
 	a := app.New(db, cfg)
 	if os.Getenv("MIGRATE_ON_START") == "1" {
 		if e = app.Migrate(context.Background(), db); e != nil {
