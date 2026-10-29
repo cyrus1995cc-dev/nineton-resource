@@ -19,6 +19,12 @@ const paths: Record<string, string> = {
   chevron: 'm9 5 7 7-7 7',
   close: 'm6 6 12 12M6 18 18 6',
   expand: 'M8 3H3v5M16 3h5v5M21 16v5h-5M8 21H3v-5',
+  repair: 'M14 6a5 5 0 0 0-6 6l-5 5 4 4 5-5a5 5 0 0 0 6-6l-3 3-4-4 3-3z',
+  handover: 'M4 7h15m-4-4 4 4-4 4M20 17H5m4-4-4 4 4 4',
+  return: 'M4 8h16v12H4zM4 8l3-5h10l3 5M9 11l-3 3 3 3M6 14h8a2 2 0 0 1 0 4h-2',
+  dispose: 'M4 8h16v12H4zM4 8l3-5h10l3 5M9 12l6 5m0-5-6 5',
+  grid: 'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z',
+  edit: 'm15 4 5 5M4 15 16 3l5 5L9 20l-6 1z',
 };
 </script>
 <template><svg :width="size" :height="size" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path :d="paths[name] || paths.box" /></svg></template>

@@ -2,7 +2,6 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { api, SESSION_EXPIRED_EVENT } from './api';
 import { ApiError } from './apiClient';
-import { parseQr } from '../shared/qr';
 import type { Asset, AuthUser, ImportResponse, ManagedUser, Stats } from './types';
 import SidebarNav from './components/SidebarNav.vue';
 import AppIcon from './components/AppIcon.vue';
@@ -32,6 +31,8 @@ const importPreview = ref<ImportResponse | null>(null);
 const importDialog = ref<HTMLDialogElement | null>(null);
 const importBusy = ref(false);
 const editBusy = ref(false);
+const scanBusy = ref(false);
+const scanError = ref('');
 const toast = ref('');
 const currentUser = ref<AuthUser | null>(null);
 const autoDingTalkLogin = ref(true);
@@ -101,13 +102,11 @@ async function createUser(payload: { username: string; password: string; display
 function showToast(message: string) { if (toastTimer) clearTimeout(toastTimer); toast.value = message; toastTimer = setTimeout(() => { toast.value = ''; }, 3200); }
 async function selectAsset(asset: Asset) { try { selected.value = await api.getAsset(asset.asset_code); } catch (err) { error.value = err instanceof Error ? err.message : '资产详情加载失败'; } }
 async function lookupAsset(payload: { raw: string; assetCode: string }) {
-  try {
-    selected.value = await api.getAsset(payload.assetCode);
-    if (canWrite.value && parseQr(payload.raw).format !== 'asset_code') {
-      const qr = await api.saveQr(payload.assetCode, payload.raw);
-      if (selected.value?.asset_code === payload.assetCode) selected.value = { ...selected.value, qr_raw: qr.qr_raw, qr_format: qr.qr_format };
-    }
-  } catch (err) { error.value = err instanceof Error ? err.message : '资产查询失败'; }
+  if (scanBusy.value) return;
+  scanBusy.value = true; scanError.value = '';
+  try { selected.value = await api.getAsset(payload.assetCode); }
+  catch (err) { scanError.value = err instanceof Error ? err.message : '资产查询失败，请重试'; }
+  finally { scanBusy.value = false; }
 }
 function startFlow(payload: { type: FlowType }) {
   if (!selected.value) return;
@@ -171,14 +170,14 @@ onBeforeUnmount(() => { window.removeEventListener(SESSION_EXPIRED_EVENT, resetS
 
       <section v-else-if="activeView === 'events'" class="content-area"><FlowPanel :user="currentUser" :can-write="canRequest" :draft="flowDraft" :initial-id="flowId" @changed="refresh" @success="showToast" @settings="navigate('settings')" /></section>
 
-      <section v-else-if="activeView === 'scan'" class="content-area scan-view"><QrLookup @lookup="lookupAsset" /></section>
+      <section v-else-if="activeView === 'scan'" class="content-area scan-view"><QrLookup :busy="scanBusy" :lookup-error="scanError" @lookup="lookupAsset" /></section>
       <section v-else-if="activeView === 'inventory'" class="content-area"><InventoryPanel :locations="stats.locations" :can-write="canWrite" @error="(message) => { error = message; }" @success="showToast" /></section>
       <section v-else-if="activeView === 'companies' && canManageUsers" class="content-area"><CompanyPanel @changed="refresh" @directory="navigate('directory')" /></section>
       <section v-else-if="activeView === 'directory' && canManageUsers" class="content-area"><DirectoryPanel @changed="loadUsers(); refresh()" /></section>
       <section v-else-if="activeView === 'settings' && canManageUsers" class="content-area"><UserSettingsPanel :current-id="currentUser.id" :users="users" :can-write="canManageUsers" :busy="userBusy" :created="userCreated" @create="createUser" @reload="loadUsers" /></section>
       <section v-else class="content-area"><div class="panel placeholder-panel"><span class="eyebrow">{{ activeTitle }}</span><h2>这个模块将在下一阶段接入</h2><p>一期核心功能已经包含资产台账、二维码解析、Excel 导入、看板统计和流转记录。</p></div></section>
     </main>
-    <AssetDetailDrawer :asset="selected" :employee-only="employeeOnly" :can-apply="canRequest" :allowed-flows="selected ? allowedAssetFlows([selected], currentUser) : []" :edit-busy="editBusy" :can-write="canWrite" @close="selected = null" @event="startFlow" @flow="openFlow" @update="updateAsset" />
+    <AssetDetailDrawer :asset="selected" :preference-key="String(currentUser.id)" :employee-only="employeeOnly" :can-apply="canRequest" :allowed-flows="selected ? allowedAssetFlows([selected], currentUser) : []" :edit-busy="editBusy" :can-write="canWrite" @close="selected = null" @event="startFlow" @flow="openFlow" @update="updateAsset" />
     <dialog v-if="importPreview" ref="importDialog" class="import-modal" aria-labelledby="import-title" @cancel="cancelImport"><span class="eyebrow">导入预览</span><h2 id="import-title">{{ importPreview.fileName }}</h2><p>确认后按资产编码更新资料；已有资产的状态和归属变化请走审批，相关行将跳过。空值保留原值，明确的 0 更新金额。预览 30 分钟内有效。</p><div class="import-stats"><div><strong>{{ importPreview.preview.newRows }}</strong><span>新增</span></div><div><strong>{{ importPreview.preview.updatedRows }}</strong><span>更新</span></div><div><strong>{{ importPreview.preview.unchangedRows }}</strong><span>无变化</span></div><div class="danger"><strong>{{ importPreview.preview.invalidRows }}</strong><span>异常</span></div></div><p v-if="error" class="scan-error" role="alert">{{ error }}</p><div v-if="importPreview.errors?.length" class="import-errors"><strong>异常行（将跳过）</strong><p v-for="(item, index) in importPreview.errors" :key="index">第 {{ item.row }} 行 · {{ item.assetCode || '无资产编码' }}：{{ item.reason }}</p></div><details v-if="importPreview.changes?.length" class="import-differences"><summary>查看 {{ importPreview.changes.length }} 项资产的资料差异</summary><div v-for="change in importPreview.changes" :key="change.assetCode"><strong>{{ change.assetCode }}</strong><p v-for="field in change.fields" :key="field.field">{{ field.field }}：{{ field.before || '空' }} → {{ field.after }}</p></div></details><div class="form-actions"><button class="secondary-button" :disabled="importBusy" autofocus @click="importPreview = null">取消</button><button class="primary-button" :disabled="importBusy || !(importPreview.preview.newRows + importPreview.preview.updatedRows + importPreview.preview.unchangedRows)" @click="confirmImport">{{ importBusy ? '导入中…' : '确认导入' }}</button></div></dialog>
   </div>
 </template>

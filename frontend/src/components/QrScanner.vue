@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { createQrCameraSession } from '../qrCamera';
+import { isMobileDingTalkClient, scanWithDingTalk } from '../dingtalk';
 const props = defineProps<{ disabled?: boolean }>();
 const emit = defineEmits<{ scan: [raw: string] }>();
 const active = ref(false); const starting = ref(false); const error = ref('');
+const nativeAvailable = isMobileDingTalkClient();
+const nativeStarting = ref(false);
 const video = ref<HTMLVideoElement | null>(null);
 let runId = 0;
 const session = createQrCameraSession({
@@ -11,7 +14,17 @@ const session = createQrCameraSession({
   acquireStream: () => navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false }),
   onResult: (raw) => { runId++; active.value = false; starting.value = false; emit('scan', raw); },
 });
-function stop() { runId++; active.value = false; starting.value = false; session.stop(); }
+function stop() { runId++; active.value = false; starting.value = false; nativeStarting.value = false; session.stop(); }
+async function openNative() {
+  if (props.disabled || nativeStarting.value || active.value) return;
+  const openingId = ++runId;
+  error.value = ''; nativeStarting.value = true;
+  try {
+    const raw = await scanWithDingTalk();
+    if (openingId === runId && !props.disabled && raw) emit('scan', raw);
+  } catch (err) { if (openingId === runId) error.value = err instanceof Error ? err.message : '钉钉扫码暂不可用，请使用摄像头扫码。'; }
+  finally { if (openingId === runId) nativeStarting.value = false; }
+}
 async function open() {
   if (props.disabled || active.value) return;
   error.value = '';
@@ -29,7 +42,7 @@ async function open() {
       : name === 'NotReadableError' ? '摄像头可能被其他应用占用，请关闭后重试。' : '摄像头启动失败，请重试或输入二维码原文。';
   } finally { if (openingId === runId) starting.value = false; }
 }
-function onVisibilityChange() { if (document.hidden) stop(); }
+function onVisibilityChange() { if (document.hidden && active.value) stop(); }
 watch(() => props.disabled, (value) => { if (value) stop(); });
 onMounted(() => document.addEventListener('visibilitychange', onVisibilityChange));
 onBeforeUnmount(() => { stop(); document.removeEventListener('visibilitychange', onVisibilityChange); });
@@ -38,7 +51,10 @@ onBeforeUnmount(() => { stop(); document.removeEventListener('visibilitychange',
   <div class="qr-scanner">
     <div v-if="active" class="camera-preview"><video ref="video" class="scan-video" autoplay muted playsinline aria-label="二维码扫描预览"></video><p role="status">{{ starting ? '正在启动摄像头…' : '请将资产二维码放入画面，识别后自动关闭' }}</p></div>
     <button v-if="active" type="button" class="secondary-button full-button" @click="stop">关闭摄像头</button>
-    <button v-else type="button" class="secondary-button full-button" :disabled="disabled" @click="open">打开摄像头扫码</button>
+    <template v-else>
+      <button v-if="nativeAvailable" type="button" class="primary-button full-button" :disabled="disabled || nativeStarting" @click="openNative">{{ nativeStarting ? '正在钉钉中扫码…' : '钉钉扫一扫' }}</button>
+      <button type="button" class="secondary-button full-button" :disabled="disabled || nativeStarting" @click="open">打开摄像头扫码</button>
+    </template>
     <p v-if="error" class="scan-error" role="alert">{{ error }}</p>
   </div>
 </template>

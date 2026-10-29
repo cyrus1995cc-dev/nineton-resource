@@ -2,6 +2,9 @@
 import { ref } from 'vue';
 import QrScanner from './QrScanner.vue';
 import { getAssetCodeFromScan } from '../qrLookup';
+import AppIcon from './AppIcon.vue';
+
+defineProps<{ busy?: boolean; lookupError?: string }>();
 
 const emit = defineEmits<{ lookup: [payload: { raw: string; assetCode: string }] }>();
 const raw = ref('');
@@ -18,14 +21,14 @@ function submit() {
 
 <template>
   <div class="scan-card">
-    <div class="scan-icon" aria-hidden="true">⌕</div><span class="eyebrow">移动扫码</span><h2>扫描资产二维码</h2>
-    <p>继续使用现有二维码，系统会从原文中识别资产编码。</p>
+    <div class="scan-icon" aria-hidden="true"><AppIcon name="scan" :size="36" /></div><span class="eyebrow">移动扫码</span><h2>扫描资产二维码</h2>
+    <p>旧公贝标签可以继续用。请从九吨资产内扫码，识别后查看资产详情、发起操作。</p>
     <form @submit.prevent="submit">
       <label class="field scan-field"><span>二维码原文或资产编码</span><input v-model="raw" placeholder="例如：CSJ-0431" autocomplete="off" autocapitalize="characters" /></label>
-      <button class="primary-button full-button" type="submit">查询资产</button>
+      <button class="primary-button full-button" type="submit" :disabled="busy">{{ busy ? '正在查询…' : '查询资产' }}</button>
     </form>
-    <QrScanner @scan="(value) => { raw = value; submit(); }" />
-    <div v-if="error" class="scan-error" role="alert">{{ error }}</div>
-    <div class="scan-tip">扫码结果只在本系统内查询，不会跳转到二维码中的网页。</div>
+    <QrScanner :disabled="busy" @scan="(value) => { raw = value; submit(); }" />
+    <div v-if="error || lookupError" class="scan-error" role="alert">{{ error || lookupError }}</div>
+    <div class="scan-tip">在这里扫码只查询九吨资产，不打开二维码中的网页。直接用钉钉首页扫一扫旧标签，仍可能打开公贝；无法识别时可输入标签上的资产编码。</div>
   </div>
 </template>

@@ -9,4 +9,14 @@ describe('mobile QR lookup boundary', () => {
   it('returns null for content that is not an asset identifier', () => {
     expect(getAssetCodeFromScan('https://example.com/help')).toBeNull();
   });
+
+  it('accepts the monitor label code and vendor URLs with a query or trailing slash', () => {
+    expect(getAssetCodeFromScan('XSQ-0318')).toBe('XSQ-0318');
+    expect(getAssetCodeFromScan('https://d.gongbeiyun.com/a/company/asset/XSQ-0318/?from=dingtalk#detail')).toBe('XSQ-0318');
+  });
+
+  it('does not guess an asset for an opaque vendor identifier or a malformed URL', () => {
+    expect(getAssetCodeFromScan('https://d.gongbeiyun.com/a/57771')).toBeNull();
+    expect(getAssetCodeFromScan('https://d.gongbeiyun.com/a/%E0%A4%A')).toBeNull();
+  });
 });

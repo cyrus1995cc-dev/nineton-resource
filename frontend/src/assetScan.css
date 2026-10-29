@@ -1,0 +1,98 @@
+.asset-info-drawer, .scan-more-dialog {
+  --scan-text: #283d54;
+  --scan-muted: #617389;
+  --scan-border: #e8edf3;
+  --scan-surface: #fff;
+  --scan-background: #f4f6f9;
+  --scan-purple: #8056cf;
+  --scan-purple-soft: #f0e9fc;
+  --scan-orange: #946208;
+  --scan-orange-soft: #fff3d9;
+  --scan-blue: #2473b9;
+  --scan-blue-soft: #e8f3ff;
+  --scan-coral: #bd5839;
+  --scan-coral-soft: #fff0e9;
+  color: var(--scan-text);
+}
+.drawer.asset-info-drawer { display: flex; flex-direction: column; padding: 0; height: 100dvh; overflow: hidden; background: var(--scan-background); }
+.asset-detail-header { display: grid; grid-template-columns: 72px minmax(0, 1fr) 72px; align-items: center; flex-shrink: 0; gap: 8px; padding: calc(8px + env(safe-area-inset-top)) 16px 8px; border-bottom: 1px solid var(--scan-border); background: var(--scan-surface); }
+.asset-detail-header h2 { margin: 0; text-align: center; font-size: 18px; line-height: 1.5; }
+.asset-detail-back { width: 44px; height: 44px; background: transparent; color: var(--scan-text); }
+.asset-detail-back svg { transform: rotate(180deg); }
+.asset-detail-header .drawer-header-actions { justify-content: flex-end; }
+.asset-detail-header .edit-trigger { min-height: 44px; padding: 8px; }
+.asset-detail-scroll { min-height: 0; flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 16px 20px; }
+.asset-detail-editing .drawer-status { flex-shrink: 0; padding: 16px 20px; margin: 0; background: var(--scan-surface); }
+.asset-detail-editing .editor-layout { margin-top: 0; }
+.scan-info-card, .scan-history-card, .scan-extra { border: 1px solid var(--scan-border); border-radius: 8px; background: var(--scan-surface); margin: 0 0 16px; padding: 16px 20px; }
+.scan-info-card header { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; border-bottom: 1px solid var(--scan-border); padding-bottom: 16px; }
+.scan-info-card h3 { margin: 0; font-size: 20px; line-height: 1.5; overflow-wrap: anywhere; }
+.scan-info-card .status-pill { flex-shrink: 0; margin-top: 4px; }
+.scan-info-fields { margin: 0; }
+.scan-info-fields > div { display: flex; gap: 24px; justify-content: space-between; margin: 16px 0; font-size: 15px; line-height: 1.6; }
+.scan-info-fields dt { color: var(--scan-muted); flex-shrink: 0; }
+.scan-info-fields dd { margin: 0; text-align: right; overflow-wrap: anywhere; min-width: 0; }
+.scan-expand { display: flex; align-items: center; justify-content: center; gap: 8px; min-width: 88px; min-height: 44px; margin: 0 auto -8px; }
+.scan-expand svg { transform: rotate(90deg); }
+.scan-expand svg.expanded { transform: rotate(-90deg); }
+.scan-extra summary { font-size: 14px; cursor: pointer; min-height: 44px; align-content: center; color: var(--scan-muted); }
+.scan-extra { padding-block: 8px; }
+.scan-history-card { padding-top: 0; }
+.scan-record-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; border-bottom: 1px solid var(--scan-border); }
+.scan-record-tabs button { min-height: 52px; padding: 12px 0; font-size: 14px; white-space: normal; }
+.scan-record { padding: 16px 0; border-bottom: 1px solid var(--scan-border); }
+.scan-record:last-child { border-bottom: 0; }
+.scan-record-number { display: inline-block; background: var(--scan-background); color: var(--scan-muted); padding: 4px 8px; font-size: 12px; border-radius: 4px; }
+.scan-record dl > div { display: grid; grid-template-columns: 80px minmax(0, 1fr); font-size: 14px; line-height: 1.8; margin: 8px 0; }
+.scan-record dt { color: var(--scan-muted); }
+.scan-record dd { margin: 0; overflow-wrap: anywhere; }
+.scan-record dd button { padding: 8px 0; text-align: left; min-height: 44px; }
+.scan-changes { padding-left: 80px; }
+.scan-changes p { font-size: 14px; line-height: 1.8; margin: 8px 0; overflow-wrap: anywhere; }
+.scan-record-hint { font-size: 13px; line-height: 1.6; color: var(--scan-muted); }
+.scan-bottom-actions { position: static; display: flex; justify-content: space-around; gap: 8px; flex-shrink: 0; border-top: 1px solid var(--scan-border); background: var(--scan-surface); padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); }
+.scan-bottom-actions button, .scan-more-grid button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; border: 0; border-radius: 8px; background: transparent; font: inherit; font-size: 13px; color: var(--scan-text); cursor: pointer; min-height: 72px; }
+.scan-bottom-actions button { flex: 1; min-width: 0; padding: 8px 0; }
+.scan-action-symbol { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 8px; }
+.scan-action-symbol svg { width: 24px; height: 24px; }
+.scan-action-symbol.purple { color: var(--scan-purple); background: var(--scan-purple-soft); }
+.scan-action-symbol.orange { color: var(--scan-orange); background: var(--scan-orange-soft); }
+.scan-action-symbol.blue { color: var(--scan-blue); background: var(--scan-blue-soft); }
+.scan-action-symbol.coral { color: var(--scan-coral); background: var(--scan-coral-soft); }
+.scan-action-symbol.gray { color: var(--scan-muted); background: var(--scan-background); }
+.scan-readonly { flex-shrink: 0; margin: 0; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); border-top: 1px solid var(--scan-border); background: var(--scan-surface); color: var(--scan-muted); text-align: center; font-size: 13px; line-height: 1.6; }
+.scan-more-dialog { width: min(560px, calc(100% - 32px)); max-height: calc(100dvh - 32px); overflow-y: auto; overscroll-behavior: contain; border: 0; border-radius: 16px; padding: 0; background: var(--scan-surface); }
+.scan-shortcut-setting { display: flex; justify-content: space-between; align-items: center; gap: 16px; width: 100%; min-height: 60px; padding: 12px 20px; text-align: left; background: transparent; color: var(--scan-text); border-bottom: 1px solid var(--scan-border); font-size: 15px; }
+.scan-shortcut-setting > span:last-child { display: flex; align-items: center; justify-content: flex-end; gap: 8px; color: var(--scan-muted); font-size: 12px; min-width: 0; }
+.scan-shortcut-setting svg { flex-shrink: 0; }
+.scan-action-group h4 { margin: 0; padding: 16px 20px; font-size: 15px; font-weight: 500; text-align: center; border-bottom: 1px solid var(--scan-border); }
+.scan-more-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 0; padding: 16px; }
+.scan-more-grid button { min-height: 88px; padding: 8px 0; overflow-wrap: anywhere; }
+.scan-more-cancel { display: block; width: 100%; min-height: 60px; padding: 16px; border-top: 8px solid var(--scan-background); background: var(--scan-surface); color: var(--scan-muted); font-size: 16px; }
+.scan-sheet-note { margin: 0; padding: 8px 20px 16px; color: var(--scan-muted); font-size: 12px; line-height: 1.7; }
+.scan-sheet-heading { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--scan-border); }
+.scan-sheet-heading h3 { margin: 0; font-size: 16px; }
+.scan-sheet-heading button { min-height: 44px; min-width: 44px; }
+.scan-shortcut-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 0 20px 20px; }
+.scan-shortcut-options label { display: flex; align-items: center; gap: 12px; min-height: 48px; cursor: pointer; font-size: 14px; }
+.scan-shortcut-options input { width: 20px; height: 20px; accent-color: var(--brand-accent); }
+.scan-shortcut-options label:has(input:disabled) { opacity: .55; cursor: not-allowed; }
+.asset-detail-header button:active, .scan-bottom-actions button:active, .scan-more-dialog button:active { background: var(--brand-accent-soft); }
+.asset-info-drawer button:focus-visible, .scan-more-dialog button:focus-visible, .scan-shortcut-options input:focus-visible { outline: 2px solid var(--brand-accent); outline-offset: -2px; }
+.scan-card .scan-tip, .scan-card > p { color: var(--org-muted); line-height: 1.8; }
+.scan-card .full-button { min-height: 48px; }
+.scan-card .scan-field input { min-height: 48px; font-size: 16px; }
+.scan-more-dialog .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+@media (max-width: 760px) {
+  .drawer.asset-info-drawer { width: 100%; padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
+  .asset-detail-header { grid-template-columns: 52px minmax(0, 1fr) 52px; padding-inline: 8px; }
+  .asset-detail-scroll { padding: 12px; }
+  .scan-info-card, .scan-history-card, .scan-extra { padding-left: 16px; padding-right: 16px; }
+  .scan-record-tabs button { min-height: 52px; font-size: 14px; }
+  .scan-more-dialog { margin: auto 0 0; width: 100%; max-width: 100%; max-height: calc(100dvh - env(safe-area-inset-top) - 16px); border-radius: 16px 16px 0 0; padding-bottom: env(safe-area-inset-bottom); padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
+  .scan-record dl > div { grid-template-columns: 72px minmax(0, 1fr); }
+  .scan-changes { padding-left: 72px; }
+  .scan-shortcut-setting { padding-inline: 16px; }
+  .scan-shortcut-setting > span:first-child { flex-shrink: 0; }
+  .scan-more-grid { gap: 8px; padding: 12px; }
+}
