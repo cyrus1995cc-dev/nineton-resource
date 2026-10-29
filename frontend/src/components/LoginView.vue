@@ -101,7 +101,7 @@ async function loginWithDingTalk() {
         <button class="primary-button full-button" type="submit" :disabled="busy || dingtalkBusy">{{ busy ? '登录中…' : '登录' }}</button>
       </form>
       <template v-if="!ssoEnabled"><div class="login-divider"><span>或</span></div><button class="dingtalk-button full-button" :disabled="busy || dingtalkBusy" @click="loginWithDingTalk">{{ dingtalkBusy ? '正在验证钉钉身份…' : dingtalkEnabled ? '使用钉钉登录' : '钉钉登录（未配置）' }}</button></template>
-      <small class="login-hint">{{ ssoEnabled ? '首次统一登录后，请联系管理员开通资产系统权限。' : '账号由管理员分配，如需帮助请联系管理员。' }}</small>
+      <small class="login-hint">{{ ssoEnabled ? '使用企业账号登录，员工默认开通普通权限。' : '账号由管理员分配，如需帮助请联系管理员。' }}</small>
     </section>
     </div>
     <p class="login-footer">九吨资产 · 让管理更有序</p>

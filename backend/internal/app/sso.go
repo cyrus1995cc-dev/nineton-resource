@@ -352,7 +352,9 @@ func (a *App) ssoSession(ctx context.Context, issuer, subject, name, previous st
 			if name == "" {
 				name = "统一登录用户"
 			}
-			id = insert(ctx, tx, "INSERT INTO users (username,password_hash,display_name,role) VALUES (?,?,?,'guest')", "sso_"+randomID(), "external:oidc", name)
+			// The owner explicitly enables ordinary employee access for all verified
+			// SSO identities. Administrative roles still require controlled binding.
+			id = insert(ctx, tx, "INSERT INTO users (username,password_hash,display_name,role) VALUES (?,?,?,'employee')", "sso_"+randomID(), "external:oidc", name)
 			exec(ctx, tx, "INSERT INTO external_identities (issuer,subject,user_id) VALUES (?,?,?)", issuer, subject, id)
 		} else {
 			id = identity["user_id"]
@@ -378,7 +380,7 @@ func (a *App) bindSSOIdentity(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	transaction(ctx, a.DB, func(tx *sql.Tx) bool {
 		// Consistent lock ordering also covers concurrent administrator changes.
-		accounts := rows(ctx, tx, "SELECT id,role,active FROM users WHERE id IN (?,?) ORDER BY id FOR UPDATE", target, source)
+		accounts := rows(ctx, tx, "SELECT id,role,active,employee_id FROM users WHERE id IN (?,?) ORDER BY id FOR UPDATE", target, source)
 		if len(accounts) != 2 {
 			fail(404, "待关联账号不存在")
 		}
@@ -390,8 +392,11 @@ func (a *App) bindSSOIdentity(w http.ResponseWriter, r *http.Request) {
 				targetUser = u
 			}
 		}
-		if sourceUser["role"] != "guest" || num(sourceUser["active"]) != 1 || num(targetUser["active"]) != 1 {
-			fail(409, "仅可将启用中的游客身份绑定到启用中的已有账号")
+		if !contains([]string{"guest", "employee"}, str(sourceUser["role"])) || sourceUser["employee_id"] != nil || num(sourceUser["active"]) != 1 || num(targetUser["active"]) != 1 {
+			fail(409, "仅可将尚未关联员工的普通登录身份绑定到启用中的已有账号")
+		}
+		if exists(ctx, tx, "SELECT id FROM asset_flows WHERE applicant_id=? LIMIT 1", source) || exists(ctx, tx, "SELECT id FROM asset_flow_steps WHERE approver_id=? LIMIT 1", source) {
+			fail(409, "来源账号已有业务记录，请先核对员工关联，不能直接合并账号")
 		}
 		identity := one(ctx, tx, "SELECT issuer,subject FROM external_identities WHERE user_id=? FOR UPDATE", source)
 		if identity == nil || exists(ctx, tx, "SELECT user_id FROM external_identities WHERE user_id=?", target) {

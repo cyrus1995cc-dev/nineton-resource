@@ -153,14 +153,28 @@ func TestOIDCProvisioningAndControlledBinding(t *testing.T) {
 		t.Fatal("unsafe app session")
 	}
 	guest := one(ctx, a.DB, userJoin+"WHERE u.username LIKE 'sso_%'")
-	if guest == nil || guest["role"] != "guest" || guest["employee_id"] != nil || VerifyPassword("do-not-persist", str(guest["password_hash"])) {
-		t.Fatal("first login must be a separate guest")
+	if guest == nil || guest["role"] != "employee" || guest["employee_id"] != nil || VerifyPassword("do-not-persist", str(guest["password_hash"])) {
+		t.Fatal("first login must be a separate ordinary employee")
 	}
-	for _, path := range []string{"/api/assets", "/api/stats", "/api/flows", "/api/directory/employees", "/api/companies", "/api/auth/users"} {
+	for _, path := range []string{"/api/directory/status", "/api/directory/mappings", "/api/companies", "/api/auth/users", "/api/inventory/tasks"} {
 		if result := cookieRequest(a, cookie, "GET", path, ""); result.Code != 403 {
 			t.Fatalf("guest accessed %s: %d", path, result.Code)
 		}
 	}
+	// No name-based account, employee or historical-asset matching. New staff
+	// can browse available stock but cannot inspect another employee's assets.
+	seed(ctx, a.DB, "SSO-IDLE", "空闲")
+	seed(ctx, a.DB, "SSO-PRIVATE", "在用")
+	result := cookieRequest(a, cookie, "GET", "/api/assets?scope=available", "")
+	if result.Code != 200 || !strings.Contains(result.Body.String(), "SSO-IDLE") || strings.Contains(result.Body.String(), "SSO-PRIVATE") {
+		t.Fatal("ordinary employee available asset scope")
+	}
+	result = cookieRequest(a, cookie, "GET", "/api/assets?scope=mine", "")
+	if result.Code != 200 || strings.Contains(result.Body.String(), "SSO-PRIVATE") {
+		t.Fatal("ordinary employee historical assets were matched by display name")
+	}
+	// An unused ordinary SSO account can still be explicitly bound by an
+	// administrator to retain an existing employee's role and business identity.
 	if result := cookieRequest(a, cookie, "GET", "/api/auth/me", ""); result.Code != 200 {
 		t.Fatal("guest cannot inspect own authorization state")
 	}
@@ -323,7 +337,7 @@ func TestOIDCKeyRotationAndRepeatedIdentity(t *testing.T) {
 	if result := oidcCallback(a, state, "good", cookie); result.Header().Get("Location") != "/" {
 		t.Fatal("JWKS key rotation failed")
 	}
-	if num(one(context.Background(), a.DB, "SELECT COUNT(*) n FROM external_identities")["n"]) != 1 || num(one(context.Background(), a.DB, "SELECT COUNT(*) n FROM users WHERE role='guest'")["n"]) != 1 {
+	if num(one(context.Background(), a.DB, "SELECT COUNT(*) n FROM external_identities")["n"]) != 1 || num(one(context.Background(), a.DB, "SELECT COUNT(*) n FROM users WHERE role='employee'")["n"]) != 1 {
 		t.Fatal("repeat login created duplicate accounts")
 	}
 }

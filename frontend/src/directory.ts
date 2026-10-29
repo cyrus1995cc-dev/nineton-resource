@@ -1,4 +1,4 @@
-export const roleLabels = { admin: '管理员', asset_manager: '资产管理员', viewer: '只读用户', employee: '普通员工', approver: '审批人', guest: '游客（待授权）' };
+export const roleLabels = { admin: '超级管理员', asset_manager: '资产管理员', viewer: '只读用户', employee: '普通员工', approver: '审批人', guest: '游客（待授权）' };
 export type EmployeeMembership = { employee_id: number; department_id: number; company_id: number | null; dingtalk_id: number; corp_id: string; department_name: string; company_name: string | null };
 export type Employee = { id: number; name: string; department: string; company: string; corp_id: string; dingtalk_user_id: string; job_number: string; title: string; active: number; missing_since: string | null; synced_at: string | null; user_id: number; role: keyof typeof roleLabels; memberships?: EmployeeMembership[] };
 export type Department = { id: number; name: string; corp_id: string; dingtalk_id: number; parent_id: number | null; synced_at: string; missing: boolean };
