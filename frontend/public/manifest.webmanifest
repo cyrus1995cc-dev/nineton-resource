@@ -1,9 +1,9 @@
 {
-  "name": "自有资产管理系统",
-  "short_name": "资产管理",
+  "name": "九吨资产",
+  "short_name": "九吨资产",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#f2f5f9",
-  "theme_color": "#1683f7",
-  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+  "background_color": "#f3f7fa",
+  "theme_color": "#132f4c",
+  "icons": [{ "src": "/brand/jiudun-mascot.png", "sizes": "1254x1254", "type": "image/png", "purpose": "any" }]
 }

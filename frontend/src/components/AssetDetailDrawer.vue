@@ -4,6 +4,7 @@ import { computed, nextTick, reactive, ref, watch } from 'vue';
 import { availableFlowTypes, flowTitles, type FlowType } from '../../shared/flows';
 import type { Asset, AssetEvent, AssetUpdateInput } from '../types';
 import { assetEditFields, assetOwnershipFields } from '../../shared/assets';
+import { assetDepartmentLabel } from '../assetWorkspace';
 
 const props = defineProps<{ asset: Asset | null; busy?: boolean; editBusy?: boolean; canWrite?: boolean; canApply?: boolean; employeeOnly?: boolean; allowedFlows?: FlowType[] }>();
 const emit = defineEmits<{
@@ -140,7 +141,7 @@ function tabEvents() {
               <label class="field"><span>所属公司</span><input v-model="form.company" /></label>
               <label class="field"><span>所在位置</span><input v-model="form.location" disabled /></label>
               <label class="field"><span>使用人</span><input v-model="form.assignee" disabled /></label>
-              <label class="field"><span>使用部门</span><input v-model="form.department" disabled /></label>
+              <label class="field"><span>使用部门</span><input :value="assetDepartmentLabel(asset)" disabled /></label>
               <label class="field"><span>领用日期</span><input disabled v-model="form.received_at" placeholder="YYYY-MM-DD" /></label>
               <label class="field readonly-field"><span>当前状态</span><input :value="asset.status" disabled /></label>
             </div>
@@ -169,7 +170,7 @@ function tabEvents() {
 
       <template v-else>
         <article class="scan-info-card"><header><h3>{{ asset.name || '未命名资产' }}</h3><span class="status-pill" :class="`status-${asset.status}`">{{ asset.status }}</span></header>
-          <dl class="scan-info-fields"><div><dt>资产编码</dt><dd>{{ asset.asset_code }}</dd></div><template v-if="expanded"><div><dt>资产分类</dt><dd>{{ asset.category_path || '—' }}</dd></div><div><dt>型号</dt><dd>{{ asset.model || '—' }}</dd></div><div><dt>设备序列号</dt><dd>{{ asset.serial_number || '—' }}</dd></div><div><dt>所在位置</dt><dd>{{ asset.location || '—' }}</dd></div><div><dt>使用部门</dt><dd>{{ asset.department || '—' }}</dd></div><div><dt>使用人</dt><dd>{{ asset.assignee || '—' }}</dd></div><div><dt>所属公司</dt><dd>{{ asset.company || '—' }}</dd></div></template></dl>
+          <dl class="scan-info-fields"><div><dt>资产编码</dt><dd>{{ asset.asset_code }}</dd></div><template v-if="expanded"><div><dt>资产分类</dt><dd>{{ asset.category_path || '—' }}</dd></div><div><dt>型号</dt><dd>{{ asset.model || '—' }}</dd></div><div><dt>设备序列号</dt><dd>{{ asset.serial_number || '—' }}</dd></div><div><dt>所在位置</dt><dd>{{ asset.location || '—' }}</dd></div><div><dt>使用部门</dt><dd>{{ assetDepartmentLabel(asset) || '—' }}</dd></div><div><dt>使用人</dt><dd>{{ asset.assignee || '—' }}</dd></div><div><dt>所属公司</dt><dd>{{ asset.company || '—' }}</dd></div></template></dl>
           <button class="text-button scan-expand" :aria-expanded="expanded" @click="expanded = !expanded">{{ expanded ? '收起 ∧' : '展开基本信息 ∨' }}</button>
         </article>
         <details class="scan-extra"><summary>更多资料与二维码</summary><dl class="scan-info-fields"><div><dt>含税金额</dt><dd>{{ Number(asset.amount_taxed || 0).toLocaleString('zh-CN', { style: 'currency', currency: 'CNY' }) }}</dd></div><div><dt>CPU / 内存</dt><dd>{{ asset.cpu || '—' }} / {{ asset.memory || '—' }}</dd></div><div><dt>领用日期</dt><dd>{{ asset.received_at || '—' }}</dd></div><div><dt>备注</dt><dd>{{ asset.remark || '—' }}</dd></div></dl><div class="qr-raw"><label>二维码原文</label><code>{{ asset.qr_raw || '暂未记录' }}</code></div></details>

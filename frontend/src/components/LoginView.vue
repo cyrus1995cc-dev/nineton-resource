@@ -2,6 +2,8 @@
 import { ref } from 'vue';
 import { api } from '../api';
 import type { AuthUser } from '../types';
+import BrandLogo from './BrandLogo.vue';
+import AppIcon from './AppIcon.vue';
 
 const emit = defineEmits<{ loggedIn: [user: AuthUser] }>();
 const username = ref('admin');
@@ -52,12 +54,18 @@ async function loginWithDingTalk() {
 
 <template>
   <main class="login-shell">
-    <section class="login-card">
-      <div class="login-brand"><span class="brand-mark">◒</span><span>自有资产</span></div>
-      <span class="eyebrow">资产管理平台</span>
-      <h1>登录系统</h1>
-      <p class="login-intro">使用本地账号进入资产台账和流转工作台。</p>
-      <div v-if="error" class="error-banner login-error">{{ error }}</div>
+    <div class="login-layout">
+    <section class="login-story" aria-label="九吨资产介绍">
+      <BrandLogo />
+      <div class="login-story-heading"><span class="eyebrow">每一项资产，都心中有数</span><h2>管理有条理，<br />工作更轻松。</h2><p>从入库到领用，从流转到盘点，<br />把资产的每一步，都安排妥当。</p></div>
+      <div class="login-mascot"><img src="/brand/jiudun-mascot.png" alt="九吨资产吉祥物" width="360" height="360" fetchpriority="high" /></div>
+      <div class="login-feature-list"><span><AppIcon name="list" />资产台账</span><span><AppIcon name="flow" />有序流转</span><span><AppIcon name="check" />轻松盘点</span></div>
+    </section>
+    <section class="login-card" aria-labelledby="login-title">
+      <span class="login-welcome">欢迎回来</span>
+      <h1 id="login-title">登录九吨资产</h1>
+      <p class="login-intro">进入工作台，开始今天的资产管理。</p>
+      <div v-if="error" class="error-banner login-error" role="alert">{{ error }}</div>
       <form class="login-form" @submit.prevent="submit">
         <label class="field"><span>用户名</span><input v-model="username" autocomplete="username" required /></label>
         <label class="field"><span>密码</span><input v-model="password" type="password" autocomplete="current-password" required /></label>
@@ -65,7 +73,9 @@ async function loginWithDingTalk() {
       </form>
       <div class="login-divider"><span>或</span></div>
       <button class="dingtalk-button full-button" :disabled="dingtalkBusy" @click="loginWithDingTalk">{{ dingtalkBusy ? '钉钉登录中…' : dingtalkEnabled ? '使用钉钉登录' : '钉钉登录（未配置）' }}</button>
-      <small class="login-hint">首次运行默认账号：admin / admin123</small>
+      <small class="login-hint">账号由管理员分配，如需帮助请联系管理员。</small>
     </section>
+    </div>
+    <p class="login-footer">九吨资产 · 让管理更有序</p>
   </main>
 </template>

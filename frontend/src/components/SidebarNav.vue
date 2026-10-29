@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import AppIcon from './AppIcon.vue';
+import BrandLogo from './BrandLogo.vue';
 defineProps<{ active: string; employeeOnly?: boolean; canManage?: boolean }>();
 const emit = defineEmits<{ navigate: [value: string] }>();
 const items = [
@@ -17,7 +18,7 @@ const items = [
 
 <template>
   <aside class="sidebar">
-    <div class="brand"><span class="brand-mark">◒</span><span>自有资产</span></div>
+    <div class="brand"><BrandLogo /></div>
     <nav>
       <template v-for="group in ['', '资产管理', '基础设置']" :key="group"><span v-if="group && (group !== '基础设置' || canManage)" class="nav-group-label">{{ group }}</span><button v-for="item in items.filter((i) => i.group === group && !(employeeOnly && ['inventory', 'settings', 'companies', 'directory'].includes(i.key)) && (!['settings', 'companies', 'directory'].includes(i.key) || canManage))" :key="item.key" class="nav-item" :class="{ active: active === item.key }" :aria-current="active === item.key ? 'page' : undefined" @click="emit('navigate', item.key)"><AppIcon :name="item.icon" /><span>{{ item.key === 'assets' && employeeOnly ? '可领用资产' : item.label }}</span></button></template>
     </nav>

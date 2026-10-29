@@ -3,5 +3,6 @@ import App from './App.vue';
 import './styles.css';
 import './organization.css';
 import './assetWorkspace.css';
+import './brand.css';
 
 createApp(App).mount('#app');
