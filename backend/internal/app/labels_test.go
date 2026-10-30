@@ -22,11 +22,15 @@ func TestMySQLLabels(t *testing.T) {
 	}
 	seed(ctx, a.DB, "LBL-001", "在用")
 	seed(ctx, a.DB, "LBL-002", "空闲")
+	exec(ctx, a.DB, "INSERT INTO asset_create_requests(request_id,request_hash,actor_id,asset_id) SELECT 'new-label','test',?,id FROM assets WHERE asset_code='LBL-002'", one(ctx, a.DB, "SELECT id FROM users WHERE role='admin'")["id"])
 	exec(ctx, a.DB, "UPDATE assets SET qr_raw='https://d.gongbeiyun.com/a/LBL-001',assignee='历史使用人',department='原部门' WHERE asset_code='LBL-001'")
 	before := js(one(ctx, a.DB, "SELECT * FROM assets WHERE asset_code='LBL-001'"))
 	got := c.call("POST", "/api/labels/assets", Row{"assetCodes": []string{"LBL-002", "LBL-001"}}, 200)["assets"].([]any)
 	if len(got) != 2 || got[0].(map[string]any)["asset_code"] != "LBL-002" {
 		t.Fatal("selection order", got)
+	}
+	if got[0].(map[string]any)["qr_mode"] != "native" || got[1].(map[string]any)["qr_mode"] != "legacy" || got[1].(map[string]any)["qr_raw"] != "https://d.gongbeiyun.com/a/LBL-001" {
+		t.Fatal("asset provenance or historic QR lost", got)
 	}
 	if before != js(one(ctx, a.DB, "SELECT * FROM assets WHERE asset_code='LBL-001'")) {
 		t.Fatal("printing mutated ledger")

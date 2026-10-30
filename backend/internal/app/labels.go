@@ -175,7 +175,7 @@ func (a *App) labelAssets(w http.ResponseWriter, r *http.Request) {
 				fail(400, "资产编码无效或重复")
 			}
 			seen[code] = true
-			asset := one(r.Context(), tx, "SELECT asset_code,name,company,model,location,department FROM assets WHERE asset_code=?", code)
+			asset := one(r.Context(), tx, "SELECT asset_code,name,company,model,location,department,qr_raw,IF(EXISTS(SELECT 1 FROM asset_create_requests c WHERE c.asset_id=assets.id),'native','legacy') AS qr_mode FROM assets WHERE asset_code=?", code)
 			if asset == nil {
 				fail(409, "所选资产已变化，请刷新清单后重新选择")
 			}

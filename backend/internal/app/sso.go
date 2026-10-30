@@ -354,16 +354,20 @@ func (a *App) ssoSession(ctx context.Context, issuer, subject, name, previous st
 	return transaction(ctx, a.DB, func(tx *sql.Tx) Row {
 		identity := one(ctx, tx, "SELECT user_id FROM external_identities WHERE issuer=? AND subject=? FOR UPDATE", issuer, subject)
 		var id any
-		if identity == nil {
-			if name == "" {
-				name = "统一登录用户"
-			}
-			// The owner explicitly enables ordinary employee access for all verified
-			// SSO identities. Administrative roles still require controlled binding.
-			id = insert(ctx, tx, "INSERT INTO users (username,password_hash,display_name,role) VALUES (?,?,?,'employee')", "sso_"+randomID(), "external:oidc", name)
-			exec(ctx, tx, "INSERT INTO external_identities (issuer,subject,user_id) VALUES (?,?,?)", issuer, subject, id)
-		} else {
+		if identity != nil {
 			id = identity["user_id"]
+		}
+		id = a.ssoDirectoryUser(ctx, tx, issuer, subject, id)
+		if identity == nil {
+			if id == nil {
+				if name == "" {
+					name = "统一登录用户"
+				}
+				// The owner explicitly enables ordinary employee access for all verified
+				// SSO identities. Administrative roles still require controlled binding.
+				id = insert(ctx, tx, "INSERT INTO users (username,password_hash,display_name,role) VALUES (?,?,?,'employee')", "sso_"+randomID(), "external:oidc", name)
+			}
+			exec(ctx, tx, "INSERT INTO external_identities (issuer,subject,user_id) VALUES (?,?,?)", issuer, subject, id)
 		}
 		u := one(ctx, tx, userJoin+"WHERE u.id=? AND "+validUser+" FOR UPDATE", id)
 		if u == nil {

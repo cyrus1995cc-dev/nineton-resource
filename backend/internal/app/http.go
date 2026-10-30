@@ -22,6 +22,7 @@ import (
 type Config struct {
 	FrontendDir, AdminUsername, AdminPassword, DingID, DingSecret, DingCorp, DingAPI, DingOAPI, AllowedOrigin string
 	SSOIssuer, SSOClientID, SSOClientSecret, SSORedirectURI, SSOScopes, SSOProviderHint                       string
+	SSOSubjectIsDingTalkUserID                                                                                bool
 }
 type App struct {
 	DB         *sql.DB

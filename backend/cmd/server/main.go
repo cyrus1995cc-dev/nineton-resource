@@ -40,6 +40,7 @@ func main() {
 	cfg.SSORedirectURI = os.Getenv("SSO_REDIRECT_URI")
 	cfg.SSOScopes = os.Getenv("SSO_SCOPES")
 	cfg.SSOProviderHint = os.Getenv("SSO_PROVIDER_HINT")
+	cfg.SSOSubjectIsDingTalkUserID = os.Getenv("SSO_SUBJECT_IS_DINGTALK_USER_ID") == "1"
 	a := app.New(db, cfg)
 	if os.Getenv("MIGRATE_ON_START") == "1" {
 		if e = app.Migrate(context.Background(), db); e != nil {
@@ -48,6 +49,7 @@ func main() {
 		}
 	}
 	a.Bootstrap(context.Background())
+	a.ReconcileSSODirectory(context.Background())
 	a.RecoverDirectorySync(context.Background())
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()

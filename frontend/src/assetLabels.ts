@@ -1,13 +1,14 @@
 import QRCode from 'qrcode';
 import { assetCodePattern } from '../shared/assets';
+import { parseQr } from '../shared/qr';
 import { assetDepartmentLabel } from './assetWorkspace';
 
-export type LabelAsset = { asset_code: string; name: string; company: string; model: string; location: string; department: string };
+export type LabelAsset = { asset_code: string; name: string; company: string; model: string; location: string; department: string; qr_mode?: 'legacy' | 'native'; qr_raw?: string | null };
 export type LabelTemplate = { id: string; version: number; name: string; width: number; height: number; qrSize: number; padding: number; fontSize: number; title: string; fields: string[] };
 export type LabelCalibration = { x: number; y: number };
 export const labelPublicOrigin = import.meta.env.VITE_PUBLIC_APP_URL || 'https://xz.vodayapp.com';
 export const labelFields = { name: '资产名称', asset_code: '资产编码', company: '所属公司', model: '型号', location: '位置', department: '使用部门' };
-export const sampleLabelAsset: LabelAsset = { asset_code: 'BJB-0001', name: '笔记本电脑', company: '重庆市九吨科技有限公司', model: 'ThinkPad X1', location: '16楼', department: '萌宠事业部' };
+export const sampleLabelAsset: LabelAsset = { asset_code: 'BJB-0001', name: '笔记本电脑', company: '重庆市九吨科技有限公司', model: 'ThinkPad X1', location: '16楼', department: '萌宠事业部', qr_mode: 'native' };
 export const defaultLabelTemplate = (): LabelTemplate => ({ id: '', version: 1, name: '新标签样式', width: 50, height: 30, qrSize: 20, padding: 2, fontSize: 7, title: '', fields: ['name', 'asset_code'] });
 export function assetLabelCode(path: string) { const match = path.match(/^\/a\/([^/]+)$/); return match && assetCodePattern.test(match[1]!) ? match[1]! : null; }
 export function labelURL(code: string, origin = 'https://xz.vodayapp.com') {
@@ -17,6 +18,15 @@ export function labelURL(code: string, origin = 'https://xz.vodayapp.com') {
   return `${url.origin}/a/${encodeURIComponent(code)}`;
 }
 export function escapeLabelText(value: unknown) { return String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!)); }
+export function labelQRValue(asset: LabelAsset, origin = 'https://xz.vodayapp.com') {
+  if (!assetCodePattern.test(asset.asset_code)) throw new Error('资产编码无效');
+  if (asset.qr_mode === 'native') return labelURL(asset.asset_code, origin);
+  const parsed = parseQr(asset.qr_raw || '');
+  if (parsed.assetCode === asset.asset_code && parsed.format === 'gongbeiyun_url' && /^https?:\/\//i.test(parsed.raw)) return parsed.raw;
+  // Legacy imports may not contain the original QR. The system scanner accepts
+  // the asset number directly; never invent a former provider's tenant URL.
+  return asset.asset_code;
+}
 export function labelQR(value: string) {
   const { modules } = QRCode.create(value, { errorCorrectionLevel: 'M' });
   const size = modules.size; let path = '';
@@ -44,7 +54,7 @@ export function labelMarkup(t: LabelTemplate, asset: LabelAsset, origin: string,
   const problem = labelTemplateProblem(t); if (problem) throw new Error(problem);
   if (!finite(calibration.x, -3, 3) || !finite(calibration.y, -3, 3)) throw new Error('打印偏移应在 -3 至 3 mm 之间');
   const rows = t.fields.map(field => `<p class="label-field" data-field="${field}">${labelFields[field as keyof typeof labelFields]}：${escapeLabelText(field === 'department' ? assetDepartmentLabel(asset) : asset[field as keyof LabelAsset]) || '—'}</p>`).join('');
-  return `<article class="asset-label" style="width:${t.width}mm;height:${t.height}mm;font-size:${t.fontSize}pt"><div class="label-content" style="padding:${t.padding}mm;transform:translate(${calibration.x}mm,${calibration.y}mm)"><div class="label-qr" style="width:${t.qrSize}mm;height:${t.qrSize}mm">${labelQR(labelURL(asset.asset_code, origin))}</div><div class="label-copy">${t.title ? `<p class="label-title">${escapeLabelText(t.title)}</p>` : ''}${rows}</div></div></article>`;
+  return `<article class="asset-label" style="width:${t.width}mm;height:${t.height}mm;font-size:${t.fontSize}pt"><div class="label-content" style="padding:${t.padding}mm;transform:translate(${calibration.x}mm,${calibration.y}mm)"><div class="label-qr" style="width:${t.qrSize}mm;height:${t.qrSize}mm">${labelQR(labelQRValue(asset, origin))}</div><div class="label-copy">${t.title ? `<p class="label-title">${escapeLabelText(t.title)}</p>` : ''}${rows}</div></div></article>`;
 }
 export function labelPrintDocument(t: LabelTemplate, assets: LabelAsset[], copies: number, origin: string, calibration: LabelCalibration) {
   if (!assets.length || assets.length > 100 || !Number.isInteger(copies) || copies < 1 || copies > 20 || assets.length * copies > 1000) throw new Error('每件1至20张，一批最多1000张标签');
