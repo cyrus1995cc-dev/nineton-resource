@@ -71,7 +71,7 @@ func main() {
 		if table == "session_policies" {
 			continue
 		} // Sessions are intentionally never migrated.
-		if table == "companies" || table == "employee_departments" || table == "company_names" || table == "external_identities" || strings.HasPrefix(table, "asset_card_") || table == "asset_categories" || table == "asset_code_rules" || table == "asset_profiles" || table == "asset_create_requests" {
+		if table == "asset_requisitions" || table == "workflow_oa" || table == "notification_deliveries" || table == "companies" || table == "employee_departments" || table == "company_names" || table == "external_identities" || strings.HasPrefix(table, "asset_card_") || table == "asset_categories" || table == "asset_code_rules" || table == "asset_profiles" || table == "asset_create_requests" {
 			var exists int
 			die(read.QueryRowContext(ctx, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?", table).Scan(&exists))
 			if exists == 0 {

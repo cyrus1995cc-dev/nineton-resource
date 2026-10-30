@@ -23,6 +23,9 @@ type Config struct {
 	FrontendDir, AdminUsername, AdminPassword, DingID, DingSecret, DingCorp, DingAPI, DingOAPI, AllowedOrigin string
 	SSOIssuer, SSOClientID, SSOClientSecret, SSORedirectURI, SSOScopes, SSOProviderHint                       string
 	SSOSubjectIsDingTalkUserID                                                                                bool
+	FixedApproverID, DingAgentID                                                                              int64
+	DingProcessCode, PublicURL                                                                                string
+	DingApprovalEnabled                                                                                       bool
 }
 type App struct {
 	DB         *sql.DB
@@ -37,6 +40,7 @@ type App struct {
 	token      string
 	tokenUntil time.Time
 	loginMu    sync.Mutex
+	workflowMu sync.Mutex
 	attempts   map[string]attempt
 	sso        ssoState
 }
@@ -216,6 +220,12 @@ func (a *App) routes() {
 	})
 	m.HandleFunc("GET /api/stats", a.stats)
 	m.HandleFunc("GET /api/flows/options", a.flowOptions)
+	m.HandleFunc("GET /api/requisitions/options", a.requisitionOptions)
+	m.HandleFunc("POST /api/requisitions", a.createRequisition)
+	m.HandleFunc("POST /api/flows/{id}/allocation", a.allocateRequisition)
+	m.HandleFunc("POST /api/flows/{id}/oa-sync", a.syncApprovalHTTP)
+	m.HandleFunc("POST /api/flows/{id}/oa-retry", a.retryApprovalHTTP)
+	m.HandleFunc("POST /api/flows/{id}/oa-bind", a.bindApprovalHTTP)
 	m.HandleFunc("GET /api/flows", a.listFlows)
 	m.HandleFunc("POST /api/flows", a.createFlow)
 	m.HandleFunc("GET /api/flows/{id}", a.getFlow)
@@ -261,6 +271,7 @@ func (a *App) routes() {
 	}
 }
 func (a *App) Scheduler(ctx context.Context) {
+	go a.ApprovalWorker(ctx)
 	tick := time.NewTicker(time.Minute)
 	defer tick.Stop()
 	last := time.Now()

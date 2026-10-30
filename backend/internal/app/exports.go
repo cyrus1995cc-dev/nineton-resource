@@ -12,7 +12,7 @@ import (
 
 const exportLimit = 50000
 
-var flowLabels = map[string]string{"pending": "审批中", "completed": "已完结", "rejected": "已驳回", "withdrawn": "已撤回"}
+var flowLabels = map[string]string{"pending": "审批中", "approved": "已批准 · 待分配", "completed": "已完结", "rejected": "已驳回", "withdrawn": "已撤回"}
 
 func beijing(v any) string {
 	s := str(v)
@@ -95,13 +95,13 @@ func (a *App) export(w http.ResponseWriter, r *http.Request) {
 			filename = "资产清单"
 		case "flows":
 			where, args := flowWhere(actor(r), filters)
-			data := rows(ctx, a.DB, "SELECT f.*,(SELECT COUNT(*) FROM asset_flow_items WHERE flow_id=f.id) AS asset_count,(SELECT approver_name FROM asset_flow_steps WHERE flow_id=f.id AND status='pending' LIMIT 1) AS approver FROM asset_flows f"+where+" ORDER BY f.id DESC LIMIT 50001", args...)
+			data := rows(ctx, a.DB, "SELECT f.*,r.category_path requested_category,r.quantity requested_quantity,r.needed_date,(SELECT COUNT(*) FROM asset_flow_items WHERE flow_id=f.id) AS asset_count,(SELECT approver_name FROM asset_flow_steps WHERE flow_id=f.id AND status='pending' LIMIT 1) AS approver FROM asset_flows f LEFT JOIN asset_requisitions r ON r.flow_id=f.id"+where+" ORDER BY f.id DESC LIMIT 50001", args...)
 			for _, v := range data {
 				v["status_label"] = flowLabels[str(v["status"])]
 				v["submitted"] = beijing(v["created_at"])
 				v["ended"] = beijing(v["completed_at"])
 			}
-			appendSheet(book, "流转单据", data, []column{{"document_no", "单据编号"}, {"type", "流转类型"}, {"status_label", "审批状态"}, {"applicant_name", "申请人"}, {"applicant_department", "申请部门"}, {"asset_count", "资产数量"}, {"approver", "当前审批人"}, {"to_assignee", "目标使用人"}, {"to_department", "目标部门"}, {"to_location", "目标位置"}, {"note", "申请说明"}, {"submitted", "申请时间（北京时间）"}, {"ended", "结束时间（北京时间）"}})
+			appendSheet(book, "流转单据", data, []column{{"document_no", "单据编号"}, {"type", "流转类型"}, {"status_label", "审批状态"}, {"applicant_name", "申请人"}, {"applicant_department", "申请部门"}, {"asset_count", "已分配资产数量"}, {"requested_category", "申请设备类别"}, {"requested_quantity", "需求数量"}, {"needed_date", "需求日期"}, {"approver", "当前审批人"}, {"to_assignee", "目标使用人"}, {"to_department", "目标部门"}, {"to_location", "目标位置"}, {"note", "申请说明"}, {"submitted", "申请时间（北京时间）"}, {"ended", "结束时间（北京时间）"}})
 			counts["flows"] = len(data)
 			for _, spec := range []struct {
 				table, name string
@@ -114,7 +114,7 @@ func (a *App) export(w http.ResponseWriter, r *http.Request) {
 						v["acted"] = beijing(v["created_at"])
 					}
 					v["status_label"] = map[string]string{"waiting": "等待前序", "pending": "待审批", "approved": "已同意", "rejected": "已驳回", "cancelled": "已取消"}[str(v["status"])]
-					v["action_label"] = map[string]string{"submitted": "提交申请", "approved": "审批通过", "rejected": "驳回申请", "withdrawn": "撤回申请", "completed": "流程完结"}[str(v["action"])]
+					v["action_label"] = map[string]string{"submitted": "提交申请", "approved": "审批通过", "rejected": "驳回申请", "withdrawn": "撤回申请", "completed": "流程完结", "allocated": "分配设备"}[str(v["action"])]
 				}
 				appendSheet(book, spec.name, related, spec.cols)
 				counts[spec.table] = len(related)

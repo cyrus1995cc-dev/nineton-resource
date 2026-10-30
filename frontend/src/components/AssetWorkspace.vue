@@ -10,7 +10,7 @@ import AppIcon from './AppIcon.vue';
 import ExportButton from './ExportButton.vue';
 
 const props = defineProps<{ user: AuthUser; scope: string; reload: number; importBusy: boolean }>();
-const emit = defineEmits<{ select: [asset: Asset]; flow: [assets: Asset[], type: FlowType]; import: []; create: []; print: [codes: string[]]; success: [message: string] }>();
+const emit = defineEmits<{ select: [asset: Asset]; flow: [assets: Asset[], type: FlowType]; import: []; create: []; requisition: []; print: [codes: string[]]; success: [message: string] }>();
 const items = ref<Asset[]>([]); const total = ref(0); const page = ref(1); const pageSize = ref(50);
 const loading = ref(true); const error = ref(''); const selectionMessage = ref('');
 const options = ref<AssetOptions>({ total: 0, statuses: [], locations: [], companies: [], departments: [], categories: [] });
@@ -75,7 +75,7 @@ onBeforeUnmount(() => { disposed = true; sequence++; });
 
 <template>
   <div class="asset-workspace">
-    <p v-if="['employee', 'approver'].includes(user.role)" class="asset-scope-notice" role="status">{{ user.employee_id ? '仅显示本人领用的资产。需要领用新资产时，请联系资产管理员。' : '账号尚未关联员工身份，请联系管理员关联后查看本人资产。' }}</p>
+    <p v-if="['employee', 'approver'].includes(user.role)" class="asset-scope-notice" role="status">{{ user.employee_id ? '仅显示本人领用的资产。需要新设备可提交领用申请。' : '账号尚未关联员工身份，请联系管理员关联后查看本人资产。' }} <button v-if="user.employee_id" class="text-button" @click="emit('requisition')">申请领用</button></p>
     <div class="workspace-mobile-status"><span>{{ scope === 'mine' ? '我的资产' : '全部资产' }} <strong>{{ options.total.toLocaleString('zh-CN') }}</strong></span><label><span class="sr-only">按资产状态筛选</span><select :value="applied.status" @change="statusTab(($event.target as HTMLSelectElement).value)"><option value="">全部状态</option><option v-for="status in assetStatuses" :key="status" :value="status">{{ status }}（{{ options.statuses.find(s => s.name === status)?.count ?? 0 }}）</option></select></label></div>
     <section class="workspace-status-tabs" aria-label="按资产状态筛选"><button :class="{ active: !applied.status }" @click="statusTab('')"><span>全部资产</span><strong>{{ options.total.toLocaleString('zh-CN') }}</strong></button><button v-for="status in assetStatuses" :key="status" :class="{ active: applied.status === status }" @click="statusTab(status)"><span>{{ status }}</span><strong>{{ options.statuses.find(s => s.name === status)?.count ?? 0 }}</strong></button></section>
     <section class="panel workspace-panel">

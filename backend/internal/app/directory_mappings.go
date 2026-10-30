@@ -30,7 +30,7 @@ func bindMappedEmployee(ctx context.Context, tx *sql.Tx, binding employeeBinding
 	if asset["assignee_employee_id"] != nil {
 		fail(409, binding.code+"：已关联其他员工，更换使用人请通过交接审批")
 	}
-	if exists(ctx, tx, "SELECT i.id FROM asset_flow_items i JOIN asset_flows f ON f.id=i.flow_id WHERE i.asset_id=? AND f.status='pending'", asset["id"]) {
+	if exists(ctx, tx, "SELECT i.id FROM asset_flow_items i JOIN asset_flows f ON f.id=i.flow_id WHERE i.asset_id=? AND f.status IN ('pending','approved')", asset["id"]) {
 		fail(409, binding.code+"：有待审批单据，请先处理后关联")
 	}
 	exec(ctx, tx, "UPDATE assets SET assignee_employee_id=?,version=version+1,updated_at_system=CURRENT_TIMESTAMP(3) WHERE id=?", binding.employeeID, asset["id"])

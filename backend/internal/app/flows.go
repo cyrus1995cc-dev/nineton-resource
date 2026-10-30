@@ -53,6 +53,11 @@ func approvers(ctx context.Context, q DBTX) []Row {
 	return rows(ctx, q, "SELECT u.id,u.username,u.display_name,u.role FROM users u LEFT JOIN employees e ON e.id=u.employee_id WHERE "+validUser+" AND u.role IN ('admin','asset_manager','approver') ORDER BY u.id")
 }
 func (a *App) flowOptions(w http.ResponseWriter, r *http.Request) {
+	if a.Config.FixedApproverID > 0 {
+		admin := a.fixedApprover(r.Context(), a.DB)
+		send(w, 200, Row{"approvers": []Row{admin}, "fixedApprover": admin, "employees": employeeList(r.Context(), a.DB, "", false), "notification": Row{"mode": "fixed", "message": "由固定资产管理员审批"}})
+		return
+	}
 	send(w, 200, Row{"approvers": approvers(r.Context(), a.DB), "employees": employeeList(r.Context(), a.DB, "", false), "notification": Row{"mode": "queued", "message": "通知已接入队列，钉钉发送待配置联调"}})
 }
 func flowWhere(u Row, f url.Values) (string, []any) {
@@ -71,7 +76,7 @@ func flowWhere(u Row, f url.Values) (string, []any) {
 		clauses = append(clauses, "f.applicant_id=?")
 		args = append(args, u["id"])
 	case "todo":
-		clauses = append(clauses, "f.status='pending' AND EXISTS (SELECT 1 FROM asset_flow_steps s WHERE s.flow_id=f.id AND s.approver_id=? AND s.status='pending')")
+		clauses = append(clauses, "f.status IN ('pending','approved') AND EXISTS (SELECT 1 FROM asset_flow_steps s WHERE s.flow_id=f.id AND s.approver_id=? AND s.status IN ('pending','approved'))")
 		args = append(args, u["id"])
 	}
 	if s := f.Get("status"); s != "" {
@@ -97,7 +102,7 @@ func flowDetail(ctx context.Context, q DBTX, id int64) Row {
 	if f == nil {
 		fail(404, "单据不存在")
 	}
-	out := Row{"flow": f}
+	out := Row{"flow": f, "requisition": one(ctx, q, "SELECT * FROM asset_requisitions WHERE flow_id=?", id), "oa": one(ctx, q, "SELECT state,instance_id,last_error,checked_at FROM workflow_oa WHERE flow_id=?", id)}
 	for key, table := range map[string]string{"items": "asset_flow_items", "steps": "asset_flow_steps", "logs": "asset_flow_logs", "comments": "asset_flow_comments", "notifications": "notification_outbox"} {
 		order := "id"
 		if key == "steps" {
@@ -159,6 +164,11 @@ func (a *App) createFlow(w http.ResponseWriter, r *http.Request) {
 		codes = append(codes, s)
 	}
 	rawApprovers, ok := b["approverIds"].([]any)
+	if a.Config.FixedApproverID > 0 {
+		a.fixedApprover(r.Context(), a.DB)
+		rawApprovers = []any{a.Config.FixedApproverID}
+		ok = true
+	}
 	if !ok || len(rawApprovers) < 1 || len(rawApprovers) > 10 {
 		fail(400, "请指定 1 至 10 位审批人")
 	}
@@ -166,7 +176,7 @@ func (a *App) createFlow(w http.ResponseWriter, r *http.Request) {
 	idSeen := map[int64]bool{}
 	for _, v := range rawApprovers {
 		id := integer(v, 0, 9007199254740991)
-		if id == num(u["id"]) || idSeen[id] {
+		if (id == num(u["id"]) && !(u["role"] == "admin" && id == a.Config.FixedApproverID)) || idSeen[id] {
 			fail(400, "申请人不能审批本人申请，审批人不能重复")
 		}
 		idSeen[id] = true
@@ -262,7 +272,7 @@ func (a *App) createFlow(w http.ResponseWriter, r *http.Request) {
 			if !contains(available(str(v["status"])), kind) {
 				fail(409, code+" 当前状态不允许"+kind)
 			}
-			if exists(ctx, tx, "SELECT i.id FROM asset_flow_items i JOIN asset_flows f ON f.id=i.flow_id WHERE i.asset_id=? AND f.status='pending'", v["id"]) {
+			if exists(ctx, tx, "SELECT i.id FROM asset_flow_items i JOIN asset_flows f ON f.id=i.flow_id WHERE i.asset_id=? AND f.status IN ('pending','approved')", v["id"]) {
 				fail(409, code+" 已在审批中，请先处理该单据")
 			}
 			assets[code] = v
@@ -283,6 +293,7 @@ func (a *App) createFlow(w http.ResponseWriter, r *http.Request) {
 		}
 		flowLog(ctx, tx, id, "submitted", u, str(input["note"]))
 		notify(ctx, tx, one(ctx, tx, "SELECT * FROM asset_flows WHERE id=?", id), "approval_pending", selected[0]["id"], str(selected[0]["display_name"]), 1)
+		a.queueOA(ctx, tx, one(ctx, tx, "SELECT * FROM asset_flows WHERE id=?", id))
 		return flowDetail(ctx, tx, id)
 	})
 	status := 201
@@ -307,107 +318,10 @@ func (a *App) flowAction(w http.ResponseWriter, r *http.Request) {
 	u := actor(r)
 	ctx := r.Context()
 	v := transaction(ctx, a.DB, func(tx *sql.Tx) Row {
-		f := one(ctx, tx, "SELECT * FROM asset_flows WHERE id=? FOR UPDATE", id)
-		if f == nil {
-			fail(404, "单据不存在")
+		if (action == "approve" || action == "reject") && exists(ctx, tx, "SELECT flow_id FROM workflow_oa WHERE flow_id=?", id) {
+			fail(409, "此单据使用钉钉审批，请在钉钉处理后同步结果")
 		}
-		if action == "comments" {
-			if !canViewFlow(ctx, tx, id, u) {
-				fail(404, "单据不存在或无权查看")
-			}
-			content := text(b["content"], 2000, true)
-			exec(ctx, tx, "INSERT INTO asset_flow_comments (flow_id,user_id,user_name,content) VALUES (?,?,?,?)", id, u["id"], u["display_name"], content)
-			return flowDetail(ctx, tx, id)
-		}
-		steps := rows(ctx, tx, "SELECT * FROM asset_flow_steps WHERE flow_id=? ORDER BY sequence", id)
-		if action == "withdraw" {
-			if num(f["applicant_id"]) != num(u["id"]) {
-				fail(403, "只有申请人可以撤回单据")
-			}
-			if f["status"] == "withdrawn" {
-				return flowDetail(ctx, tx, id)
-			}
-		} else {
-			var own Row
-			for _, s := range steps {
-				if num(s["approver_id"]) == num(u["id"]) {
-					own = s
-					break
-				}
-			}
-			if own == nil {
-				fail(403, "你不是该单据的指定审批人")
-			}
-			if action == "approve" && own["status"] == "approved" || action == "reject" && own["status"] == "rejected" {
-				return flowDetail(ctx, tx, id)
-			}
-		}
-		if f["status"] != "pending" {
-			fail(409, "该单据已结束，不能继续处理")
-		}
-		if action == "withdraw" {
-			exec(ctx, tx, "UPDATE asset_flows SET status='withdrawn',completed_at=CURRENT_TIMESTAMP(3) WHERE id=?", id)
-			exec(ctx, tx, "UPDATE asset_flow_steps SET status='cancelled' WHERE flow_id=? AND status IN ('pending','waiting')", id)
-			flowLog(ctx, tx, id, "withdrawn", u, comment)
-			cancelNotifications(ctx, tx, id)
-			notify(ctx, tx, f, "withdrawn", f["applicant_id"], str(f["applicant_name"]), 0)
-			return flowDetail(ctx, tx, id)
-		}
-		var step, next Row
-		for _, s := range steps {
-			if num(s["sequence"]) == num(f["current_step"]) && s["status"] == "pending" {
-				step = s
-			}
-			if num(s["sequence"]) == num(f["current_step"])+1 {
-				next = s
-			}
-		}
-		if step == nil || num(step["approver_id"]) != num(u["id"]) {
-			fail(403, "请等待前一位审批人处理")
-		}
-		if action == "reject" && comment == "" {
-			fail(400, "请填写驳回原因")
-		}
-		state := "approved"
-		if action == "reject" {
-			state = "rejected"
-		}
-		exec(ctx, tx, "UPDATE asset_flow_steps SET status=?,comment=?,acted_at=CURRENT_TIMESTAMP(3) WHERE id=?", state, comment, step["id"])
-		flowLog(ctx, tx, id, state, u, comment)
-		cancelNotifications(ctx, tx, id)
-		if action == "reject" {
-			exec(ctx, tx, "UPDATE asset_flows SET status='rejected',completed_at=CURRENT_TIMESTAMP(3) WHERE id=?", id)
-			exec(ctx, tx, "UPDATE asset_flow_steps SET status='cancelled' WHERE flow_id=? AND status='waiting'", id)
-			notify(ctx, tx, f, "rejected", f["applicant_id"], str(f["applicant_name"]), 0)
-		} else if next != nil {
-			exec(ctx, tx, "UPDATE asset_flow_steps SET status='pending' WHERE id=?", next["id"])
-			exec(ctx, tx, "UPDATE asset_flows SET current_step=? WHERE id=?", next["sequence"], id)
-			notify(ctx, tx, f, "approval_pending", next["approver_id"], str(next["approver_name"]), num(next["sequence"]))
-		} else {
-			items := rows(ctx, tx, "SELECT * FROM asset_flow_items WHERE flow_id=? ORDER BY asset_id", id)
-			for _, item := range items {
-				old := one(ctx, tx, "SELECT * FROM assets WHERE id=? FOR UPDATE", item["asset_id"])
-				if old == nil {
-					fail(409, "资产已不存在")
-				}
-				for _, field := range []string{"status", "location", "assignee", "department"} {
-					if str(old[field]) != str(item["expected_"+field]) {
-						fail(409, str(item["asset_code"])+" 台账已变化，请撤回后重新申请")
-					}
-				}
-				if num(old["assignee_employee_id"]) != num(item["expected_employee_id"]) {
-					fail(409, "人员关联已变化，请撤回重填")
-				}
-				if f["to_employee_id"] != nil && !exists(ctx, tx, "SELECT id FROM employees WHERE id=? AND active=1 AND missing_since IS NULL FOR SHARE", f["to_employee_id"]) {
-					fail(409, "接收员工已停用或不在授权范围")
-				}
-				applyFlowEvent(ctx, tx, old, f, u)
-			}
-			exec(ctx, tx, "UPDATE asset_flows SET status='completed',completed_at=CURRENT_TIMESTAMP(3) WHERE id=?", id)
-			flowLog(ctx, tx, id, "completed", u, "全部审批通过，资产台账已更新")
-			notify(ctx, tx, f, "completed", f["applicant_id"], str(f["applicant_name"]), 0)
-		}
-		return flowDetail(ctx, tx, id)
+		return a.processFlowAction(ctx, tx, id, action, comment, str(b["content"]), u)
 	})
 	status := 200
 	if action == "comments" {
@@ -415,6 +329,92 @@ func (a *App) flowAction(w http.ResponseWriter, r *http.Request) {
 	}
 	send(w, status, v)
 }
+func (a *App) processFlowAction(ctx context.Context, tx *sql.Tx, id int64, action, comment, content string, u Row) Row {
+	f := one(ctx, tx, "SELECT * FROM asset_flows WHERE id=? FOR UPDATE", id)
+	if f == nil {
+		fail(404, "单据不存在")
+	}
+	if action == "comments" {
+		if !canViewFlow(ctx, tx, id, u) {
+			fail(404, "单据不存在或无权查看")
+		}
+		content := text(content, 2000, true)
+		exec(ctx, tx, "INSERT INTO asset_flow_comments (flow_id,user_id,user_name,content) VALUES (?,?,?,?)", id, u["id"], u["display_name"], content)
+		return flowDetail(ctx, tx, id)
+	}
+	steps := rows(ctx, tx, "SELECT * FROM asset_flow_steps WHERE flow_id=? ORDER BY sequence", id)
+	if action == "withdraw" {
+		if num(f["applicant_id"]) != num(u["id"]) {
+			fail(403, "只有申请人可以撤回单据")
+		}
+		if f["status"] == "withdrawn" {
+			return flowDetail(ctx, tx, id)
+		}
+	} else {
+		var own Row
+		for _, s := range steps {
+			if num(s["approver_id"]) == num(u["id"]) {
+				own = s
+				break
+			}
+		}
+		if own == nil {
+			fail(403, "你不是该单据的指定审批人")
+		}
+		if action == "approve" && own["status"] == "approved" || action == "reject" && own["status"] == "rejected" {
+			return flowDetail(ctx, tx, id)
+		}
+	}
+	if f["status"] != "pending" && !(action == "withdraw" && f["status"] == "approved") {
+		fail(409, "该单据已结束，不能继续处理")
+	}
+	if action == "withdraw" {
+		exec(ctx, tx, "UPDATE asset_flows SET status='withdrawn',completed_at=CURRENT_TIMESTAMP(3) WHERE id=?", id)
+		exec(ctx, tx, "UPDATE asset_requisitions SET approval_state='withdrawn' WHERE flow_id=?", id)
+		exec(ctx, tx, "UPDATE asset_flow_steps SET status='cancelled' WHERE flow_id=? AND status IN ('pending','waiting')", id)
+		flowLog(ctx, tx, id, "withdrawn", u, comment)
+		cancelNotifications(ctx, tx, id)
+		exec(ctx, tx, "UPDATE notification_outbox SET status='cancelled' WHERE flow_id=? AND kind='approved' AND status='pending'", id)
+		notify(ctx, tx, f, "withdrawn", f["applicant_id"], str(f["applicant_name"]), 0)
+		return flowDetail(ctx, tx, id)
+	}
+	var step, next Row
+	for _, s := range steps {
+		if num(s["sequence"]) == num(f["current_step"]) && s["status"] == "pending" {
+			step = s
+		}
+		if num(s["sequence"]) == num(f["current_step"])+1 {
+			next = s
+		}
+	}
+	if step == nil || num(step["approver_id"]) != num(u["id"]) {
+		fail(403, "请等待前一位审批人处理")
+	}
+	if action == "reject" && comment == "" {
+		fail(400, "请填写驳回原因")
+	}
+	state := "approved"
+	if action == "reject" {
+		state = "rejected"
+	}
+	exec(ctx, tx, "UPDATE asset_flow_steps SET status=?,comment=?,acted_at=CURRENT_TIMESTAMP(3) WHERE id=?", state, comment, step["id"])
+	flowLog(ctx, tx, id, state, u, comment)
+	cancelNotifications(ctx, tx, id)
+	if action == "reject" {
+		exec(ctx, tx, "UPDATE asset_flows SET status='rejected',completed_at=CURRENT_TIMESTAMP(3) WHERE id=?", id)
+		exec(ctx, tx, "UPDATE asset_requisitions SET approval_state='rejected' WHERE flow_id=?", id)
+		exec(ctx, tx, "UPDATE asset_flow_steps SET status='cancelled' WHERE flow_id=? AND status='waiting'", id)
+		notify(ctx, tx, f, "rejected", f["applicant_id"], str(f["applicant_name"]), 0)
+	} else if next != nil {
+		exec(ctx, tx, "UPDATE asset_flow_steps SET status='pending' WHERE id=?", next["id"])
+		exec(ctx, tx, "UPDATE asset_flows SET current_step=? WHERE id=?", next["sequence"], id)
+		notify(ctx, tx, f, "approval_pending", next["approver_id"], str(next["approver_name"]), num(next["sequence"]))
+	} else {
+		a.finishFlow(ctx, tx, f, u)
+	}
+	return flowDetail(ctx, tx, id)
+}
+
 func cancelNotifications(ctx context.Context, q DBTX, id int64) {
 	exec(ctx, q, "UPDATE notification_outbox SET status='cancelled' WHERE flow_id=? AND kind='approval_pending' AND status IN ('pending','failed')", id)
 }
@@ -459,4 +459,42 @@ func applyFlowEvent(ctx context.Context, q DBTX, old, f, u Row) {
 	}
 	exec(ctx, q, "UPDATE assets SET status=?,assignee=?,department=?,location=?,assignee_employee_id=?,version=version+1,updated_at_system=CURRENT_TIMESTAMP(3) WHERE id=?", next["status"], next["assignee"], next["department"], next["location"], next["assignee_employee_id"], old["id"])
 	writeEvent(ctx, q, old, kind, str(u["display_name"]), str(f["note"]), fmt.Sprintf("flow:%v:%v", f["id"], old["id"]), f["id"], changes)
+}
+
+func (a *App) finishFlow(ctx context.Context, tx *sql.Tx, f, u Row) {
+	id := num(f["id"])
+
+	items := rows(ctx, tx, "SELECT * FROM asset_flow_items WHERE flow_id=? ORDER BY asset_id", id)
+	if len(items) == 0 {
+		if !exists(ctx, tx, "SELECT flow_id FROM asset_requisitions WHERE flow_id=?", id) {
+			fail(409, "单据没有可处理资产")
+		}
+		exec(ctx, tx, "UPDATE asset_flows SET status='approved' WHERE id=?", id)
+		exec(ctx, tx, "UPDATE asset_requisitions SET approval_state='approved' WHERE flow_id=?", id)
+		notify(ctx, tx, f, "approved", f["applicant_id"], str(f["applicant_name"]), 0)
+		return
+	}
+	for _, item := range items {
+		old := one(ctx, tx, "SELECT * FROM assets WHERE id=? FOR UPDATE", item["asset_id"])
+		if old == nil {
+			fail(409, "资产已不存在")
+		}
+		for _, field := range []string{"status", "location", "assignee", "department"} {
+			if str(old[field]) != str(item["expected_"+field]) {
+				fail(409, str(item["asset_code"])+" 台账已变化，请撤回后重新申请")
+			}
+		}
+		if num(old["assignee_employee_id"]) != num(item["expected_employee_id"]) {
+			fail(409, "人员关联已变化，请撤回重填")
+		}
+		if f["to_employee_id"] != nil && !exists(ctx, tx, "SELECT id FROM employees WHERE id=? AND active=1 AND missing_since IS NULL FOR SHARE", f["to_employee_id"]) {
+			fail(409, "接收员工已停用或不在授权范围")
+		}
+		applyFlowEvent(ctx, tx, old, f, u)
+	}
+	exec(ctx, tx, "UPDATE asset_flows SET status='completed',completed_at=CURRENT_TIMESTAMP(3) WHERE id=?", id)
+	exec(ctx, tx, "UPDATE asset_requisitions SET approval_state='approved' WHERE flow_id=?", id)
+	exec(ctx, tx, "UPDATE notification_outbox SET status='cancelled' WHERE flow_id=? AND kind='approved' AND status='pending'", id)
+	flowLog(ctx, tx, id, "completed", u, "全部审批通过，资产台账已更新")
+	notify(ctx, tx, f, "completed", f["applicant_id"], str(f["applicant_name"]), 0)
 }

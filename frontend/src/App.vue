@@ -10,6 +10,7 @@ import AssetWorkspace from './components/AssetWorkspace.vue';
 import { allowedAssetFlows, type AssetFlowDraft } from './assetWorkspace';
 import AssetDetailDrawer from './components/AssetDetailDrawer.vue';
 import FlowPanel from './components/FlowPanel.vue';
+import RequisitionDialog from './components/RequisitionDialog.vue';
 import type { FlowType } from '../shared/flows';
 import QrLookup from './components/QrLookup.vue';
 import LoginView from './components/LoginView.vue';
@@ -26,6 +27,8 @@ import { assetLabelCode } from './assetLabels';
 import { roleLabels } from './directory';
 
 const activeView = ref('dashboard');
+const requisitionOpen=ref(false);
+async function requisitionSubmitted(id:number){requisitionOpen.value=false;flowId.value=id;flowDraft.value=null;activeView.value='events';showToast('领用申请已提交');await refresh()}
 const labelCodes = ref<string[]>([]);
 function printLabels(codes: string[]) { if (!canWrite.value) return; labelCodes.value = [...codes]; selected.value = null; }
 function labelSettings() { labelCodes.value = []; navigate('labels'); }
@@ -97,7 +100,7 @@ async function bootstrapAuth() {
 }
 async function onLoggedIn(user: AuthUser) { currentUser.value = user; await refresh(); await openInitialTarget(); }
 function resetSession() {
-  currentUser.value = null; selected.value = null; flowDraft.value = null; labelCodes.value = [];
+  currentUser.value = null; requisitionOpen.value=false; selected.value = null; flowDraft.value = null; labelCodes.value = [];
   flowId.value = Number(new URLSearchParams(window.location.search).get('flow')) || null;
   stats.value = { total: 0, status: {}, categories: [], locations: [], companies: [], amounts: { taxed: 0, untaxed: 0, tax: 0 } };
   activeView.value = 'dashboard'; assetsRevision.value = 0;
@@ -147,6 +150,7 @@ async function confirmImport() {
   finally { importBusy.value = false; }
 }
 function navigate(view: string) {
+  if(view==='requisition'){if(canRequest.value)requisitionOpen.value=true;return;}
   activeView.value = employeeOnly.value && view === 'assets' ? 'my-assets' : view;
   void nextTick(() => window.scrollTo(0, 0));
   const url = new URL(window.location.href); url.pathname = '/'; url.searchParams.delete('flow'); window.history.replaceState(null, '', url);
@@ -163,7 +167,7 @@ onBeforeUnmount(() => { window.removeEventListener(SESSION_EXPIRED_EVENT, resetS
   <LoginView v-else-if="!currentUser" :auto-ding-talk-login="autoDingTalkLogin" @logged-in="onLoggedIn" />
   <main v-else-if="currentUser.role === 'guest'" class="login-shell"><section class="login-card"><h1>等待管理员授权</h1><p class="login-intro">{{ currentUser.display_name }}，你已完成统一登录。请联系管理员分配资产系统角色，或关联已有账号，完成后重新登录。</p><p v-if="error" class="error-banner" role="alert">{{ error }}</p><button class="secondary-button full-button" @click="logout">退出当前账号</button></section></main>
   <div v-else-if="authReady" class="app-shell" :class="{ 'asset-mode': ['assets', 'my-assets'].includes(activeView) }">
-    <SidebarNav :active="activeView" :employee-only="employeeOnly" :can-manage="canManageUsers" @navigate="navigate" />
+    <SidebarNav :active="activeView" :employee-only="employeeOnly" :can-manage="canManageUsers" :can-request="canRequest" @navigate="navigate" />
     <main class="main-shell" :class="{ 'mobile-home-view': activeView === 'dashboard', 'mobile-profile-view': activeView === 'profile' }">
       <header class="topbar"><div class="tenant"><span class="tenant-badge">资产管理</span><strong>重庆市九吨科技有限公司</strong><span class="chevron">⌄</span></div><div class="top-actions"><span>{{ currentUser?.display_name }} · {{ currentUser ? roleLabels[currentUser.role] : '' }}</span><button class="avatar" aria-label="个人信息" title="个人信息" @click="navigate('profile')">{{ currentUser?.display_name?.slice(0, 1) }}</button></div></header>
       <div class="page-heading"><div><span class="eyebrow">九吨资产 · 工作台</span><h1>{{ activeTitle }}</h1></div><div v-show="!['companies', 'directory', 'settings', 'assets', 'my-assets', 'categories', 'cards', 'codes', 'labels', 'profile'].includes(activeView)" class="heading-actions"><input ref="importInput" type="file" accept=".xlsx,.xls" class="hidden-input" @change="onImportFile" /><button v-if="canWrite" class="secondary-button" :disabled="importBusy" @click="importInput?.click()">{{ importBusy ? '处理中…' : '导入 Excel' }}</button><button class="primary-button" @click="navigate('scan')">扫码查询</button></div></div>
@@ -176,9 +180,9 @@ onBeforeUnmount(() => { window.removeEventListener(SESSION_EXPIRED_EVENT, resetS
         <div class="dashboard-grid three"><article class="panel"><div class="panel-header"><div><span class="eyebrow">位置统计</span><h2>楼层分布</h2></div></div><div class="simple-list"><div v-for="item in stats.locations.slice(0, 6)" :key="item.name"><span>{{ item.name }}</span><strong>{{ item.count }}</strong></div></div></article><article class="panel"><div class="panel-header"><div><span class="eyebrow">公司统计</span><h2>所属公司</h2></div></div><div class="simple-list"><div v-for="item in stats.companies.slice(0, 6)" :key="item.name"><span class="truncate">{{ item.name }}</span><strong>{{ item.count }}</strong></div></div></article><article class="panel quick-panel"><span class="eyebrow">快捷操作</span><h2>开始管理资产</h2><button class="quick-action" @click="navigate('assets')">查看资产清单 <AppIcon name="chevron" :size="16" /></button><button class="quick-action" @click="navigate('scan')">扫描二维码查询 <AppIcon name="scan" :size="16" /></button><button v-if="canWrite" class="quick-action" :disabled="importBusy" @click="importInput?.click()">批量导入 Excel <AppIcon name="upload" :size="16" /></button></article></div>
       </section>
 
-      <section v-else-if="['assets', 'my-assets'].includes(activeView)" class="content-area workspace-content"><AssetWorkspace :key="activeView" :user="currentUser" :scope="activeView === 'my-assets' || employeeOnly ? 'mine' : ''" :reload="assetsRevision" :import-busy="importBusy" @select="selectAsset" @create="newAsset" @print="printLabels" @flow="startAssetFlow" @import="importInput?.click()" @success="showToast" /></section>
+      <section v-else-if="['assets', 'my-assets'].includes(activeView)" class="content-area workspace-content"><AssetWorkspace :key="activeView" :user="currentUser" :scope="activeView === 'my-assets' || employeeOnly ? 'mine' : ''" :reload="assetsRevision" :import-busy="importBusy" @select="selectAsset" @create="newAsset" @requisition="requisitionOpen=true" @print="printLabels" @flow="startAssetFlow" @import="importInput?.click()" @success="showToast" /></section>
 
-      <section v-else-if="activeView === 'events'" class="content-area"><FlowPanel :user="currentUser" :can-write="canRequest" :draft="flowDraft" :initial-id="flowId" @changed="refresh" @success="showToast" @settings="navigate('settings')" /></section>
+      <section v-else-if="activeView === 'events'" class="content-area"><FlowPanel :user="currentUser" :can-write="canRequest" :draft="flowDraft" :initial-id="flowId" @changed="refresh" @success="showToast" @requisition="requisitionOpen=true" @settings="navigate('settings')" /></section>
 
       <section v-else-if="activeView === 'scan'" class="content-area scan-view"><QrLookup :busy="scanBusy" :lookup-error="scanError" @lookup="lookupAsset" /></section>
       <section v-else-if="activeView === 'inventory'" class="content-area"><InventoryPanel :locations="stats.locations" :can-write="canWrite" @error="(message) => { error = message; }" @success="showToast" /></section>
@@ -191,6 +195,7 @@ onBeforeUnmount(() => { window.removeEventListener(SESSION_EXPIRED_EVENT, resetS
       <section v-else class="content-area"><div class="panel placeholder-panel"><span class="eyebrow">{{ activeTitle }}</span><h2>这个模块将在下一阶段接入</h2><p>一期核心功能已经包含资产台账、二维码解析、Excel 导入、看板统计和流转记录。</p></div></section>
     </main>
     <nav class="mobile-bottom-nav" aria-label="手机主导航"><button v-for="item in mobileItems" :key="item.key" :class="{active:isMobileTab(item.key), 'mobile-scan-nav':item.key==='scan'}" :aria-current="isMobileTab(item.key)?'page':undefined" @click="navigate(item.key)"><span><AppIcon :name="item.icon" :size="23" /></span><small>{{ item.label }}</small></button></nav>
+    <RequisitionDialog v-if="requisitionOpen && canRequest" @close="requisitionOpen=false" @submitted="requisitionSubmitted" />
     <LabelPrintDialog v-if="labelCodes.length && canWrite" :codes="labelCodes" :can-edit="canManageUsers" @close="labelCodes=[]" @settings="labelSettings" />
     <AssetFormDialog v-if="assetFormOpen" :asset="editingAsset" @close="assetFormOpen=false; editingAsset=null" @saved="assetSaved" @directory="formDirectory" />
     <AssetDetailDrawer :asset="selected" :preference-key="String(currentUser.id)" :employee-only="employeeOnly" :can-apply="canRequest" :allowed-flows="selected ? allowedAssetFlows([selected], currentUser) : []" :can-write="canWrite" @close="selected = null" @edit="editSelected" @print="selected && printLabels([selected.asset_code])" @event="startFlow" @flow="openFlow"  />

@@ -429,3 +429,43 @@ CREATE TABLE IF NOT EXISTS `company_names` (
   KEY `idx_company_names_company` (`company_id`),
   FOREIGN KEY (`company_id`) REFERENCES `companies` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
+
+CREATE TABLE IF NOT EXISTS `asset_requisitions` (
+  `flow_id` BIGINT NOT NULL PRIMARY KEY,
+  `category_id` BIGINT NOT NULL,
+  `category_path` VARCHAR(200) NOT NULL,
+  `quantity` BIGINT NOT NULL,
+  `needed_date` VARCHAR(10) NOT NULL DEFAULT '',
+  `purpose` VARCHAR(2000) NOT NULL,
+  `approval_state` VARCHAR(30) NOT NULL DEFAULT 'pending',
+  `version` BIGINT NOT NULL DEFAULT 1,
+  FOREIGN KEY (`flow_id`) REFERENCES `asset_flows` (`id`),
+  FOREIGN KEY (`category_id`) REFERENCES `asset_categories` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
+
+CREATE TABLE IF NOT EXISTS `workflow_oa` (
+  `flow_id` BIGINT NOT NULL PRIMARY KEY,
+  `instance_id` VARCHAR(200) NULL,
+  `process_code` VARCHAR(200) NOT NULL,
+  `originator_user_id` VARCHAR(200) NOT NULL,
+  `approver_user_id` VARCHAR(200) NOT NULL,
+  `state` VARCHAR(30) NOT NULL DEFAULT 'queued',
+  `attempts` BIGINT NOT NULL DEFAULT 0,
+  `last_error` VARCHAR(1000) NOT NULL DEFAULT '',
+  `next_attempt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `checked_at` DATETIME(3) NULL,
+  `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  UNIQUE KEY (`instance_id`),
+  KEY `idx_workflow_due` (`state`,`next_attempt`),
+  FOREIGN KEY (`flow_id`) REFERENCES `asset_flows` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
+
+CREATE TABLE IF NOT EXISTS `notification_deliveries` (
+  `notification_id` BIGINT NOT NULL PRIMARY KEY,
+  `state` VARCHAR(30) NOT NULL DEFAULT 'queued',
+  `attempts` BIGINT NOT NULL DEFAULT 0,
+  `task_id` VARCHAR(200) NULL,
+  `last_error` VARCHAR(1000) NOT NULL DEFAULT '',
+  `next_attempt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  FOREIGN KEY (`notification_id`) REFERENCES `notification_outbox` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
