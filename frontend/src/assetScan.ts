@@ -2,10 +2,12 @@ import type { FlowType } from '../shared/flows';
 
 export const defaultScanActions: FlowType[] = ['维修', '交接', '报失'];
 export const scanActionLabels: Record<FlowType, string> = {
+  派发: '资产派发',
   领用: '资产领用', 归还: '资产退还', 借出: '资产借出', 借出归还: '借出归还',
   调拨: '资产调拨', 交接: '交接他人', 维修: '故障报修', 报废: '资产报废', 报失: '资产报失',
 };
 export const scanActionIcons: Record<FlowType, { name: string; tone: string }> = {
+  派发: { name: 'upload', tone: 'blue' },
   领用: { name: 'box', tone: 'blue' }, 归还: { name: 'return', tone: 'coral' },
   借出: { name: 'upload', tone: 'orange' }, 借出归还: { name: 'return', tone: 'coral' },
   调拨: { name: 'flow', tone: 'purple' }, 交接: { name: 'handover', tone: 'orange' },

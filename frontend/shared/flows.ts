@@ -1,8 +1,8 @@
-export const flowTypes = ['领用', '归还', '借出', '借出归还', '调拨', '交接', '维修', '报废', '报失'] as const;
+export const flowTypes = ['派发', '领用', '归还', '借出', '借出归还', '调拨', '交接', '维修', '报废', '报失'] as const;
 export type FlowType = typeof flowTypes[number];
 export type FlowStatus = 'pending' | 'approved' | 'completed' | 'rejected' | 'withdrawn';
 export const flowStatusLabels: Record<FlowStatus, string> = { pending: '审批中', approved:'已批准 · 待分配', completed: '已完结', rejected: '已驳回', withdrawn: '已撤回' };
-export const flowTitles: Record<FlowType, string> = { 领用: '资产领用', 归还: '资产归还', 借出: '资产借出', 借出归还: '借出归还', 调拨: '资产调拨', 交接: '资产交接', 维修: '故障报修', 报废: '资产报废', 报失: '资产报失' };
+export const flowTitles: Record<FlowType, string> = { 派发: '资产派发', 领用: '资产领用', 归还: '资产归还', 借出: '资产借出', 借出归还: '借出归还', 调拨: '资产调拨', 交接: '资产交接', 维修: '故障报修', 报废: '资产报废', 报失: '资产报失' };
 export type Flow = {
   id: number; document_no: string; type: FlowType; status: FlowStatus;
   applicant_id: number; applicant_name: string; applicant_department: string;
@@ -18,7 +18,7 @@ export type Requisition = { flow_id:number;category_id:number;category_path:stri
 export type FlowDetail = { flow: Flow; items: FlowItem[]; steps: FlowStep[]; logs: FlowLog[]; comments: FlowComment[]; notifications: FlowNotification[];requisition?:Requisition|null;oa?:{state:string;instance_id:string|null;last_error:string;checked_at:string|null}|null };
 export type FlowInput = { type: FlowType; assetCodes: string[]; applicantDepartment: string; approverIds: number[]; toEmployeeId?: number | null; toAssignee?: string; toDepartment?: string; toLocation?: string; note?: string; requestId: string };
 export function availableFlowTypes(status: string): FlowType[] {
-  if (status === '空闲') return ['领用', '借出', '调拨', '维修', '报废', '报失'];
+  if (status === '空闲') return ['派发', '领用', '借出', '调拨', '维修', '报废', '报失'];
   if (status === '在用') return ['归还', '交接', '调拨', '维修', '报废', '报失'];
   if (status === '借出') return ['借出归还', '交接', '调拨', '维修', '报废', '报失'];
   if (status === '维修') return ['调拨', '报废', '报失'];

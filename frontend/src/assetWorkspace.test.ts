@@ -7,6 +7,11 @@ const admin: AuthUser = { id: 1, username: 'admin', display_name: '管理', role
 const employee: AuthUser = { ...admin, role: 'employee', employee_id: 8 };
 
 describe('asset workspace permissions and bulk operations', () => {
+  it('offers dispatch for idle assets under administrator actions', () => {
+    expect(allowedAssetFlows([asset('空闲')], admin)).toContain('派发');
+    expect(allowedAssetFlows([asset('空闲')], admin)).not.toContain('领用');
+    expect(allowedAssetFlows([asset('在用')], admin)).not.toContain('派发');
+  });
   it('only offers actions supported by every selected asset', () => {
     expect(allowedAssetFlows([asset('空闲'), asset('在用')], admin)).toEqual(['调拨', '维修', '报废', '报失']);
     expect(allowedAssetFlows([asset('空闲'), asset('报废')], admin)).toEqual([]);

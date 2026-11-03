@@ -60,7 +60,7 @@ func (a *App) workflowCall(ctx context.Context, method, path string, payload any
 }
 
 func (a *App) queueOA(ctx context.Context, tx *sql.Tx, f Row) {
-	if num(f["applicant_id"]) == a.Config.FixedApproverID && a.Config.FixedApproverID > 0 {
+	if f["type"] != "派发" && num(f["applicant_id"]) == a.Config.FixedApproverID && a.Config.FixedApproverID > 0 {
 		u := a.fixedApprover(ctx, tx)
 		a.processFlowAction(ctx, tx, num(f["id"]), "approve", "资产管理员直接办理", "", u)
 		audit(ctx, tx, u, "admin_direct_handling", str(f["id"]), Row{"type": f["type"]})
@@ -70,8 +70,11 @@ func (a *App) queueOA(ctx context.Context, tx *sql.Tx, f Row) {
 		return
 	}
 	steps := rows(ctx, tx, "SELECT approver_id FROM asset_flow_steps WHERE flow_id=? ORDER BY sequence", f["id"])
-	if len(steps) != 1 || num(steps[0]["approver_id"]) != a.Config.FixedApproverID {
+	if len(steps) != 1 || (f["type"] != "派发" && num(steps[0]["approver_id"]) != a.Config.FixedApproverID) {
 		fail(409, "钉钉审批只支持固定资产管理员")
+	}
+	if f["type"] == "派发" && !exists(ctx, tx, "SELECT id FROM users WHERE id=? AND employee_id=? AND active=1", steps[0]["approver_id"], f["to_employee_id"]) {
+		fail(409, "派发确认人必须是接收员工本人")
 	}
 	identity := func(id any) string {
 		e := one(ctx, tx, "SELECT e.dingtalk_user_id,e.corp_id FROM users u JOIN employees e ON e.id=u.employee_id WHERE u.id=? AND u.active=1 AND e.active=1 AND e.missing_since IS NULL", id)
@@ -135,6 +138,9 @@ func (a *App) syncOneApproval(ctx context.Context, id int64) {
 			lines = append(lines, str(item["asset_code"])+" · "+str(item["asset_name"]))
 		}
 		content := str(f["note"])
+		if f["type"] == "派发" {
+			content = "资产管理员向您派发以下设备。请核对实物后点击同意确认领用；拒绝则不领用。确认前资产不会登记到您名下。\n" + content
+		}
 		if demand != nil {
 			content = fmt.Sprintf("%s，%d件，需求日期：%s\n%s", str(demand["category_path"]), num(demand["quantity"]), str(demand["needed_date"]), str(demand["purpose"]))
 		}
@@ -201,18 +207,25 @@ func (a *App) syncOneApproval(ctx context.Context, id int64) {
 			}
 		}
 		if !verified {
-			fail(409, "未取得指定管理员的审批记录，已停止回写")
+			fail(409, "未取得指定确认人的审批记录，已停止回写")
 		}
 		transaction(ctx, a.DB, func(tx *sql.Tx) bool {
 			f := one(ctx, tx, "SELECT * FROM asset_flows WHERE id=? FOR UPDATE", id)
 			if f["status"] == "pending" {
-				u := one(ctx, tx, userJoin+"JOIN asset_flow_steps s ON s.approver_id=u.id WHERE s.flow_id=? AND s.sequence=1 AND u.role='admin' AND "+validUser, id)
+				u := one(ctx, tx, userJoin+"JOIN asset_flow_steps s ON s.approver_id=u.id WHERE s.flow_id=? AND s.sequence=1 AND "+validUser+" FOR SHARE", id)
 				if u == nil {
-					fail(409, "固定管理员已停用，无法回写审批")
+					fail(409, "指定确认账号已停用，无法回写审批")
+				}
+				if f["type"] == "派发" {
+					if num(u["employee_id"]) != num(f["to_employee_id"]) {
+						fail(409, "派发接收员工身份已变化，已停止回写")
+					}
+				} else if u["role"] != "admin" || num(u["id"]) != a.Config.FixedApproverID {
+					fail(409, "固定管理员身份已变化，已停止回写")
 				}
 				identity := one(ctx, tx, "SELECT corp_id,dingtalk_user_id FROM employees WHERE id=? AND active=1 AND missing_since IS NULL", u["employee_id"])
 				if identity == nil || str(identity["corp_id"]) != a.Config.DingCorp || str(identity["dingtalk_user_id"]) != str(oa["approver_user_id"]) {
-					fail(409, "指定管理员身份已变化，已停止回写")
+					fail(409, "指定确认人钉钉身份已变化，已停止回写")
 				}
 				action := "approve"
 				if decision == "refuse" {

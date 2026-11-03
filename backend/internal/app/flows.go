@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-var flowPrefixes = map[string]string{"领用": "ZCLY", "归还": "ZCTH", "借出": "ZCJC", "借出归还": "ZCJH", "调拨": "ZCDB", "交接": "ZCJJ", "维修": "ZCWX", "报废": "ZCBF", "报失": "ZCBS"}
+var flowPrefixes = map[string]string{"派发": "ZCPF", "领用": "ZCLY", "归还": "ZCTH", "借出": "ZCJC", "借出归还": "ZCJH", "调拨": "ZCDB", "交接": "ZCJJ", "维修": "ZCWX", "报废": "ZCBF", "报失": "ZCBS"}
 
 // Preserve the original JSON property order so migrated pending requests remain idempotent.
 func requestDigest(input Row) string {
@@ -39,7 +39,7 @@ func requestDigest(input Row) string {
 func available(status string) []string {
 	switch status {
 	case "空闲":
-		return []string{"领用", "借出", "调拨", "维修", "报废", "报失"}
+		return []string{"派发", "领用", "借出", "调拨", "维修", "报废", "报失"}
 	case "在用":
 		return []string{"归还", "交接", "调拨", "维修", "报废", "报失"}
 	case "借出":
@@ -138,11 +138,26 @@ func notify(ctx context.Context, q DBTX, f Row, kind string, recipient any, name
 	payload := Row{"flowId": f["id"], "documentNo": f["document_no"], "type": f["type"], "applicant": f["applicant_name"], "path": fmt.Sprintf("/?flow=%v", f["id"]), "recipient": Row{"localUserId": recipient, "employeeId": identity["employeeId"], "corpId": identity["corpId"], "userId": identity["userId"]}}
 	exec(ctx, q, "INSERT INTO notification_outbox (flow_id,kind,recipient_id,recipient_name,dedupe_key,payload_json) VALUES (?,?,?,?,?,?) ON DUPLICATE KEY UPDATE id=id", f["id"], kind, recipient, name, fmt.Sprintf("%v:%s:%d:%v", f["id"], kind, step, recipient), js(payload))
 }
+
+func notifyFlowResult(ctx context.Context, q DBTX, f Row, kind string) {
+	notify(ctx, q, f, kind, f["applicant_id"], str(f["applicant_name"]), 0)
+	if f["type"] == "派发" {
+		receiver := one(ctx, q, "SELECT approver_id,approver_name FROM asset_flow_steps WHERE flow_id=? AND sequence=1", f["id"])
+		if receiver != nil && num(receiver["approver_id"]) != num(f["applicant_id"]) {
+			notify(ctx, q, f, kind, receiver["approver_id"], str(receiver["approver_name"]), 0)
+		}
+	}
+}
 func (a *App) createFlow(w http.ResponseWriter, r *http.Request) {
 	roles(r, "admin", "asset_manager", "employee", "approver")
 	b := body(r)
 	u := actor(r)
 	kind := text(b["type"], 100, true)
+	// Older clients call an administrator's assignment a requisition. It must
+	// follow recipient confirmation too, never the administrator's direct path.
+	if kind == "领用" && !restricted(u) && b["toEmployeeId"] != nil && num(b["toEmployeeId"]) != num(u["employee_id"]) {
+		kind = "派发"
+	}
 	if flowPrefixes[kind] == "" {
 		fail(400, "请选择有效流转类型")
 	}
@@ -164,12 +179,14 @@ func (a *App) createFlow(w http.ResponseWriter, r *http.Request) {
 		codes = append(codes, s)
 	}
 	rawApprovers, ok := b["approverIds"].([]any)
-	if a.Config.FixedApproverID > 0 {
+	if kind == "派发" {
+		rawApprovers, ok = []any{}, true // Resolved from the recipient, never client supplied.
+	} else if a.Config.FixedApproverID > 0 {
 		a.fixedApprover(r.Context(), a.DB)
 		rawApprovers = []any{a.Config.FixedApproverID}
 		ok = true
 	}
-	if !ok || len(rawApprovers) < 1 || len(rawApprovers) > 10 {
+	if !ok || (kind != "派发" && len(rawApprovers) < 1) || len(rawApprovers) > 10 {
 		fail(400, "请指定 1 至 10 位审批人")
 	}
 	ids := []int64{}
@@ -183,13 +200,13 @@ func (a *App) createFlow(w http.ResponseWriter, r *http.Request) {
 		ids = append(ids, id)
 	}
 	input := Row{"type": kind, "assetCodes": codes, "approverIds": ids, "applicantDepartment": text(b["applicantDepartment"], 200, false), "toAssignee": text(b["toAssignee"], 200, false), "toDepartment": text(b["toDepartment"], 200, false), "toLocation": text(b["toLocation"], 200, false), "note": text(b["note"], 2000, false), "requestId": text(b["requestId"], 100, true), "toEmployeeId": nil, "applicantId": u["id"]}
-	if !contains([]string{"领用", "借出", "交接"}, kind) {
+	if !contains([]string{"派发", "领用", "借出", "交接"}, kind) {
 		input["toAssignee"] = ""
 	}
-	if !contains([]string{"领用", "借出", "交接", "调拨"}, kind) {
+	if !contains([]string{"派发", "领用", "借出", "交接", "调拨"}, kind) {
 		input["toDepartment"] = ""
 	}
-	if b["toEmployeeId"] != nil && contains([]string{"领用", "借出", "交接"}, kind) {
+	if b["toEmployeeId"] != nil && contains([]string{"派发", "领用", "借出", "交接"}, kind) {
 		input["toEmployeeId"] = integer(b["toEmployeeId"], 0, 9007199254740991)
 	}
 	ctx := r.Context()
@@ -213,7 +230,7 @@ func (a *App) createFlow(w http.ResponseWriter, r *http.Request) {
 				fail(403, "员工领用的接收人必须为本人")
 			}
 		}
-		if contains([]string{"领用", "借出", "交接"}, kind) {
+		if contains([]string{"派发", "领用", "借出", "交接"}, kind) {
 			if input["toEmployeeId"] == nil && exists(ctx, tx, "SELECT id FROM employees WHERE active=1 LIMIT 1") {
 				fail(400, "请从通讯录选择接收员工")
 			}
@@ -230,6 +247,21 @@ func (a *App) createFlow(w http.ResponseWriter, r *http.Request) {
 		if contains([]string{"维修", "报失", "报废"}, kind) && input["note"] == "" {
 			fail(400, "请填写申请原因或故障说明")
 		}
+		if kind == "派发" {
+			if !a.oaEnabled() {
+				fail(503, "资产派发需要启用钉钉审批，配置完成后才能发送员工确认")
+			}
+			if input["toEmployeeId"] == nil || num(input["toEmployeeId"]) == num(u["employee_id"]) {
+				fail(400, "请选择其他在职员工作为派发接收人")
+			}
+			receivers := rows(ctx, tx, "SELECT u.id FROM users u JOIN employees e ON e.id=u.employee_id WHERE u.employee_id=? AND "+validUser+" AND e.corp_id=? AND e.dingtalk_user_id<>'' FOR SHARE", input["toEmployeeId"], a.Config.DingCorp)
+			if len(receivers) != 1 {
+				fail(409, "接收员工尚未关联有效的钉钉登录账号，请先同步通讯录")
+			}
+			ids = []int64{num(receivers[0]["id"])}
+			input["approverIds"] = ids
+			// Keep the digest independent of any client-supplied approver IDs.
+		}
 		digest := requestDigest(input)
 		if old := one(ctx, tx, "SELECT * FROM asset_flows WHERE request_id=?", input["requestId"]); old != nil {
 			if old["request_hash"] != digest {
@@ -241,6 +273,9 @@ func (a *App) createFlow(w http.ResponseWriter, r *http.Request) {
 			return v
 		}
 		options := approvers(ctx, tx)
+		if kind == "派发" {
+			options = rows(ctx, tx, "SELECT u.id,u.display_name FROM users u WHERE u.id=?", ids[0])
+		}
 		selected := []Row{}
 		for _, id := range ids {
 			var found Row
@@ -375,7 +410,7 @@ func (a *App) processFlowAction(ctx context.Context, tx *sql.Tx, id int64, actio
 		flowLog(ctx, tx, id, "withdrawn", u, comment)
 		cancelNotifications(ctx, tx, id)
 		exec(ctx, tx, "UPDATE notification_outbox SET status='cancelled' WHERE flow_id=? AND kind='approved' AND status='pending'", id)
-		notify(ctx, tx, f, "withdrawn", f["applicant_id"], str(f["applicant_name"]), 0)
+		notifyFlowResult(ctx, tx, f, "withdrawn")
 		return flowDetail(ctx, tx, id)
 	}
 	var step, next Row
@@ -404,7 +439,7 @@ func (a *App) processFlowAction(ctx context.Context, tx *sql.Tx, id int64, actio
 		exec(ctx, tx, "UPDATE asset_flows SET status='rejected',completed_at=CURRENT_TIMESTAMP(3) WHERE id=?", id)
 		exec(ctx, tx, "UPDATE asset_requisitions SET approval_state='rejected' WHERE flow_id=?", id)
 		exec(ctx, tx, "UPDATE asset_flow_steps SET status='cancelled' WHERE flow_id=? AND status='waiting'", id)
-		notify(ctx, tx, f, "rejected", f["applicant_id"], str(f["applicant_name"]), 0)
+		notifyFlowResult(ctx, tx, f, "rejected")
 	} else if next != nil {
 		exec(ctx, tx, "UPDATE asset_flow_steps SET status='pending' WHERE id=?", next["id"])
 		exec(ctx, tx, "UPDATE asset_flows SET current_step=? WHERE id=?", next["sequence"], id)
@@ -425,7 +460,7 @@ func applyFlowEvent(ctx context.Context, q DBTX, old, f, u Row) {
 	}
 	next := Row{"status": old["status"], "assignee": str(old["assignee"]), "department": str(old["department"]), "location": str(old["location"]), "assignee_employee_id": old["assignee_employee_id"]}
 	switch kind {
-	case "领用":
+	case "派发", "领用":
 		next["status"] = "在用"
 	case "借出":
 		next["status"] = "借出"
@@ -441,7 +476,7 @@ func applyFlowEvent(ctx context.Context, q DBTX, old, f, u Row) {
 		next["department"] = ""
 		next["assignee_employee_id"] = nil
 	}
-	if contains([]string{"领用", "借出", "交接"}, kind) {
+	if contains([]string{"派发", "领用", "借出", "交接"}, kind) {
 		next["assignee"] = f["to_assignee"]
 		next["assignee_employee_id"] = f["to_employee_id"]
 	}
@@ -496,5 +531,5 @@ func (a *App) finishFlow(ctx context.Context, tx *sql.Tx, f, u Row) {
 	exec(ctx, tx, "UPDATE asset_requisitions SET approval_state='approved' WHERE flow_id=?", id)
 	exec(ctx, tx, "UPDATE notification_outbox SET status='cancelled' WHERE flow_id=? AND kind='approved' AND status='pending'", id)
 	flowLog(ctx, tx, id, "completed", u, "全部审批通过，资产台账已更新")
-	notify(ctx, tx, f, "completed", f["applicant_id"], str(f["applicant_name"]), 0)
+	notifyFlowResult(ctx, tx, f, "completed")
 }

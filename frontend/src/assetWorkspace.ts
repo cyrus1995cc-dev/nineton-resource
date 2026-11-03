@@ -45,6 +45,7 @@ export function allowedAssetFlows(assets: Asset[], user: AuthUser): FlowType[] {
   const limited = ['employee', 'approver'].includes(user.role);
   if (limited && !user.employee_id) return [];
   return flowTypes.filter(type => (!limited || ['归还', '交接', '维修', '报失'].includes(type)) && assets.every(a => {
+    if (!limited && type === '领用') return false;
     if (!availableFlowTypes(a.status).includes(type)) return false;
     if (!limited) return true;
     return a.assignee_employee_id === user.employee_id;

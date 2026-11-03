@@ -270,11 +270,13 @@ func TestFixedAdminDirectHandlingAndEmployeeReturn(t *testing.T) {
 	a, admin, employee, _ := requisitionFixture(t)
 	ctx := context.Background()
 	staff := one(ctx, a.DB, "SELECT id FROM employees WHERE dingtalk_user_id='demand-owner'")
-	issued := admin.call("POST", "/api/flows", Row{"type": "领用", "assetCodes": []string{"REQ-001"}, "applicantDepartment": "行政部", "approverIds": []int{999999}, "toEmployeeId": staff["id"], "requestId": "admin-direct-issue"}, 201)
+	admin.call("POST", "/api/flows", Row{"type": "领用", "assetCodes": []string{"REQ-001"}, "applicantDepartment": "行政部", "approverIds": []int{999999}, "toEmployeeId": staff["id"], "requestId": "admin-issue-no-oa"}, 503)
+	issued := admin.call("POST", "/api/flows", Row{"type": "维修", "assetCodes": []string{"REQ-002"}, "applicantDepartment": "行政部", "note": "管理员送修", "requestId": "admin-direct-repair"}, 201)
 	f := issued["flow"].(map[string]any)
 	if f["status"] != "completed" || num(one(ctx, a.DB, "SELECT approver_id FROM asset_flow_steps WHERE flow_id=?", f["id"])["approver_id"]) != a.Config.FixedApproverID {
 		t.Fatal("fixed admin not enforced")
 	}
+	exec(ctx, a.DB, "UPDATE assets SET status='在用',assignee='员工甲',department='研发部',assignee_employee_id=? WHERE asset_code='REQ-001'", staff["id"])
 	returned := employee.call("POST", "/api/flows", Row{"type": "归还", "assetCodes": []string{"REQ-001"}, "approverIds": []int{999999}, "requestId": "employee-fixed-return"}, 201)
 	returnID := returned["flow"].(map[string]any)["id"]
 	if returned["flow"].(map[string]any)["status"] != "pending" {
