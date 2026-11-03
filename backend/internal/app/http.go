@@ -24,7 +24,7 @@ type Config struct {
 	SSOIssuer, SSOClientID, SSOClientSecret, SSORedirectURI, SSOScopes, SSOProviderHint                       string
 	SSOSubjectIsDingTalkUserID                                                                                bool
 	FixedApproverID, DingAgentID                                                                              int64
-	DingProcessCode, PublicURL                                                                                string
+	DingProcessCode, DingDispatchProcessCode, PublicURL                                                       string
 	DingApprovalEnabled                                                                                       bool
 }
 type App struct {

@@ -83,7 +83,11 @@ func (a *App) queueOA(ctx context.Context, tx *sql.Tx, f Row) {
 		}
 		return str(e["dingtalk_user_id"])
 	}
-	exec(ctx, tx, "INSERT INTO workflow_oa(flow_id,process_code,originator_user_id,approver_user_id) VALUES (?,?,?,?)", f["id"], a.Config.DingProcessCode, identity(f["applicant_id"]), identity(steps[0]["approver_id"]))
+	process := a.Config.DingProcessCode
+	if f["type"] == "派发" && a.Config.DingDispatchProcessCode != "" {
+		process = a.Config.DingDispatchProcessCode
+	}
+	exec(ctx, tx, "INSERT INTO workflow_oa(flow_id,process_code,originator_user_id,approver_user_id) VALUES (?,?,?,?)", f["id"], process, identity(f["applicant_id"]), identity(steps[0]["approver_id"]))
 }
 
 func workflowProblem(p any) (string, string) {
@@ -132,33 +136,14 @@ func (a *App) syncOneApproval(ctx context.Context, id int64) {
 			return
 		}
 		demand := one(ctx, a.DB, "SELECT * FROM asset_requisitions WHERE flow_id=?", id)
-		items := rows(ctx, a.DB, "SELECT asset_code,asset_name FROM asset_flow_items WHERE flow_id=? ORDER BY id", id)
-		lines := []string{}
-		for _, item := range items {
-			lines = append(lines, str(item["asset_code"])+" · "+str(item["asset_name"]))
-		}
-		content := str(f["note"])
-		if f["type"] == "派发" {
-			content = "资产管理员向您派发以下设备。请核对实物后点击同意确认领用；拒绝则不领用。确认前资产不会登记到您名下。\n" + content
-		}
-		if demand != nil {
-			content = fmt.Sprintf("%s，%d件，需求日期：%s\n%s", str(demand["category_path"]), num(demand["quantity"]), str(demand["needed_date"]), str(demand["purpose"]))
-		}
-		for _, field := range []struct{ key, label string }{{"applicant_department", "申请部门"}, {"to_assignee", "目标使用人"}, {"to_department", "目标部门"}, {"to_location", "目标位置"}} {
-			if value := str(f[field.key]); value != "" {
-				content += "\n" + field.label + "：" + value
-			}
-		}
-		if len(lines) == 0 {
-			lines = []string{"按设备类别申请，由管理员在九吨资产分配具体设备。"}
-		}
-		content += fmt.Sprintf("\n查看单据：%s/?flow=%d", a.publicURL(), id)
+		items := rows(ctx, a.DB, "SELECT asset_code,asset_name,model FROM asset_flow_items WHERE flow_id=? ORDER BY id", id)
+		dedicated := f["type"] == "派发" && a.Config.DingDispatchProcessCode != "" && str(oa["process_code"]) == a.Config.DingDispatchProcessCode
+		values := a.approvalFormValues(f, demand, items, dedicated)
 		department := one(ctx, a.DB, "SELECT d.dingtalk_id FROM users u JOIN employee_departments ed ON ed.employee_id=u.employee_id JOIN departments d ON d.id=ed.department_id WHERE u.id=? AND d.corp_id=? ORDER BY d.dingtalk_id LIMIT 1", f["applicant_id"], a.Config.DingCorp)
 		dept := int64(1)
 		if department != nil {
 			dept = num(department["dingtalk_id"])
 		}
-		values := []Row{{"name": "系统单号", "value": f["document_no"]}, {"name": "申请类型", "value": f["type"]}, {"name": "申请内容", "value": content}, {"name": "资产清单", "value": strings.Join(lines, "\n")}}
 		// bizDetailPageUrl requires the paid OA edition. A normal form link works
 		// with the enterprise's standard native approval service.
 		result := a.workflowCall(ctx, "POST", "/v1.0/workflow/processInstances", Row{"processCode": oa["process_code"], "originatorUserId": oa["originator_user_id"], "deptId": dept, "microappAgentId": a.Config.DingAgentID, "approvers": []Row{{"actionType": "NONE", "userIds": []string{str(oa["approver_user_id"])}}}, "formComponentValues": values})
@@ -195,6 +180,9 @@ func (a *App) syncOneApproval(ctx context.Context, id int64) {
 	if state == "COMPLETED" && (decision == "agree" || decision == "refuse") {
 		verified := false
 		comment := "钉钉审批结果同步"
+		if f["type"] == "派发" && decision == "refuse" {
+			comment = "接收员工拒绝领用，未填写原因"
+		}
 		if records, ok := detail["operationRecords"].([]any); ok {
 			for _, raw := range records {
 				record, _ := raw.(map[string]any)
@@ -393,10 +381,16 @@ func (a *App) deliverFlowNotifications(ctx context.Context) {
 			if str(original["userId"]) != str(recipient["dingtalk_user_id"]) || str(original["corpId"]) != a.Config.DingCorp {
 				fail(409, "通知接收人身份已变化，停止发送")
 			}
-			labels := map[string]string{"approved": "申请已批准，等待分配设备", "completed": "申请已完成", "rejected": "申请已驳回", "withdrawn": "申请已撤回"}
-			f := one(ctx, a.DB, "SELECT document_no FROM asset_flows WHERE id=?", n["flow_id"])
+			message, _ := payload["message"].(map[string]any)
+			if message == nil {
+				f := one(ctx, a.DB, "SELECT * FROM asset_flows WHERE id=?", n["flow_id"])
+				items := rows(ctx, a.DB, "SELECT asset_code,asset_name,model FROM asset_flow_items WHERE flow_id=? ORDER BY id", n["flow_id"])
+				demand := one(ctx, a.DB, "SELECT category_path,quantity FROM asset_requisitions WHERE flow_id=?", n["flow_id"])
+				reason := one(ctx, a.DB, "SELECT note FROM asset_flow_logs WHERE flow_id=? AND action=? ORDER BY id DESC LIMIT 1", n["flow_id"], n["kind"])
+				message = workflowResultMessage(f, demand, items, str(n["kind"]), str(reason["note"]))
+			}
 			exec(ctx, a.DB, "UPDATE notification_deliveries SET state='sending',attempts=attempts+1 WHERE notification_id=?", n["id"])
-			response := a.workMessageCall(ctx, "/topapi/message/corpconversation/asyncsend_v2", Row{"agent_id": a.Config.DingAgentID, "userid_list": recipient["dingtalk_user_id"], "msg": Row{"msgtype": "link", "link": Row{"messageUrl": fmt.Sprintf("%s/?flow=%v", a.publicURL(), n["flow_id"]), "picUrl": a.publicURL() + "/brand/jiudun-mascot.png", "title": "九吨资产 · " + labels[str(n["kind"])], "text": str(f["document_no"]) + "，点击查看申请详情"}}})
+			response := a.workMessageCall(ctx, "/topapi/message/corpconversation/asyncsend_v2", Row{"agent_id": a.Config.DingAgentID, "userid_list": recipient["dingtalk_user_id"], "msg": Row{"msgtype": "link", "link": Row{"messageUrl": fmt.Sprintf("%s/?flow=%v", a.publicURL(), n["flow_id"]), "picUrl": a.publicURL() + "/brand/jiudun-mascot.png", "title": message["title"], "text": message["text"]}}})
 			if str(response["task_id"]) == "" {
 				fail(504, "通知发送结果无法确认")
 			}

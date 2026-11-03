@@ -1,0 +1,21 @@
+{
+  "name": "九吨资产·领用确认",
+  "description": "管理员派发设备后，由接收员工本人确认领用。请收到并核对设备后点击同意；确认后由九吨资产登记归属。",
+  "templateConfig": {
+    "disableHomepage": true,
+    "disableResubmit": true,
+    "disableFormEdit": true
+  },
+  "formComponents": [
+    { "componentType": "TextareaField", "props": { "label": "设备信息", "required": true } },
+    { "componentType": "TextField", "props": { "label": "接收员工", "required": true } },
+    { "componentType": "TextField", "props": { "label": "接收部门", "required": true } },
+    { "componentType": "TextField", "props": { "label": "派发人", "required": true } },
+    { "componentType": "TextField", "props": { "label": "派发部门", "required": true } },
+    { "componentType": "TextField", "props": { "label": "派发时间", "required": true } },
+    { "componentType": "TextareaField", "props": { "label": "领用说明", "required": true } },
+    { "componentType": "TextareaField", "props": { "label": "补充说明", "required": false } },
+    { "componentType": "TextField", "props": { "label": "系统单号", "required": true } },
+    { "componentType": "TextareaField", "props": { "label": "查看单据", "required": true } }
+  ]
+}

@@ -21,6 +21,7 @@ func dispatchFixture(t *testing.T) (*App, testClient, testClient, *dispatchRemot
 	exec(ctx, a.DB, "UPDATE users SET employee_id=? WHERE id=?", owner, a.Config.FixedApproverID)
 	a.Config.DingCorp, a.Config.DingID, a.Config.DingSecret = "test-corp", "app", "secret"
 	a.Config.DingAgentID, a.Config.DingProcessCode, a.Config.DingApprovalEnabled = 123, "PROC-DISPATCH", true
+	a.Config.DingDispatchProcessCode = "PROC-RECEIPT"
 	remote := &dispatchRemote{status: "RUNNING", decision: "agree", confirmer: "demand-owner"}
 	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
@@ -31,8 +32,9 @@ func dispatchFixture(t *testing.T) (*App, testClient, testClient, *dispatchRemot
 			if b["originatorUserId"] != "dispatch-admin" || js(b["approvers"]) != `[{"actionType":"NONE","userIds":["demand-owner"]}]` {
 				t.Error("dispatch must be originated by admin and confirmed only by recipient", js(b["approvers"]))
 			}
-			if !strings.Contains(js(b["formComponentValues"]), "确认前资产不会登记到您名下") {
-				t.Error("missing recipient instructions")
+			fields, _ := b["formComponentValues"].([]any)
+			if b["processCode"] != "PROC-RECEIPT" || !strings.Contains(js(fields), receiptInstruction) || !strings.HasPrefix(js(fields), `[{"name":"设备信息"`) {
+				t.Error("dispatch must use dedicated receipt form and equipment-first presentation")
 			}
 			remote.created++
 			send(w, 200, Row{"instanceId": "dispatch-" + str(remote.created)})
@@ -45,6 +47,9 @@ func dispatchFixture(t *testing.T) (*App, testClient, testClient, *dispatchRemot
 			b := body(r)
 			if b["userid_list"] != "dispatch-admin" && b["userid_list"] != "demand-owner" {
 				t.Error("notification sent to unrelated employee")
+			}
+			if !strings.Contains(js(b["msg"]), "REQ-001") || !strings.Contains(js(b["msg"]), "已确认领用") {
+				t.Error("notification must identify the equipment and confirmation result")
 			}
 			send(w, 200, Row{"errcode": 0, "task_id": 123})
 		case r.URL.Path == "/topapi/message/corpconversation/getsendresult":

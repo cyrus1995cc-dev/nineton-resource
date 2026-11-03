@@ -44,6 +44,7 @@ func main() {
 	cfg.FixedApproverID = int64(app.EnvInt("ASSET_FIXED_APPROVER_ID", 0))
 	cfg.DingAgentID = int64(app.EnvInt("DINGTALK_AGENT_ID", 0))
 	cfg.DingProcessCode = os.Getenv("DINGTALK_PROCESS_CODE")
+	cfg.DingDispatchProcessCode = os.Getenv("DINGTALK_DISPATCH_PROCESS_CODE")
 	cfg.DingApprovalEnabled = os.Getenv("DINGTALK_APPROVAL_ENABLED") == "1"
 	cfg.PublicURL = os.Getenv("PUBLIC_APP_URL")
 	a := app.New(db, cfg)

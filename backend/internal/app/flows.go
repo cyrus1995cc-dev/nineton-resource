@@ -136,6 +136,12 @@ func flowLog(ctx context.Context, q DBTX, id int64, action string, u Row, note s
 func notify(ctx context.Context, q DBTX, f Row, kind string, recipient any, name string, step int64) {
 	identity := one(ctx, q, "SELECT e.id AS employeeId,e.corp_id AS corpId,e.dingtalk_user_id AS userId FROM users u LEFT JOIN employees e ON e.id=u.employee_id WHERE u.id=?", recipient)
 	payload := Row{"flowId": f["id"], "documentNo": f["document_no"], "type": f["type"], "applicant": f["applicant_name"], "path": fmt.Sprintf("/?flow=%v", f["id"]), "recipient": Row{"localUserId": recipient, "employeeId": identity["employeeId"], "corpId": identity["corpId"], "userId": identity["userId"]}}
+	if kind != "approval_pending" {
+		items := rows(ctx, q, "SELECT asset_code,asset_name,model FROM asset_flow_items WHERE flow_id=? ORDER BY id", f["id"])
+		demand := one(ctx, q, "SELECT category_path,quantity FROM asset_requisitions WHERE flow_id=?", f["id"])
+		reason := one(ctx, q, "SELECT note FROM asset_flow_logs WHERE flow_id=? AND action=? ORDER BY id DESC LIMIT 1", f["id"], kind)
+		payload["message"] = workflowResultMessage(f, demand, items, kind, str(reason["note"]))
+	}
 	exec(ctx, q, "INSERT INTO notification_outbox (flow_id,kind,recipient_id,recipient_name,dedupe_key,payload_json) VALUES (?,?,?,?,?,?) ON DUPLICATE KEY UPDATE id=id", f["id"], kind, recipient, name, fmt.Sprintf("%v:%s:%d:%v", f["id"], kind, step, recipient), js(payload))
 }
 
